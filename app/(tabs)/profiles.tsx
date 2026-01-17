@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router, useGlobalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -88,7 +87,7 @@ const INITIAL_USERS = [
   },
 ];
 
-export default function HomeScreen() {
+export default function ProfilesScreen() {
   const params = useGlobalSearchParams();
   const [users, setUsers] = useState(INITIAL_USERS);
 
@@ -112,13 +111,13 @@ export default function HomeScreen() {
 
   const handleUserSelect = (user: (typeof INITIAL_USERS)[0]) => {
     router.push({
-      pathname: "/(tabs)/testing",
-      params: { userId: user.id, userName: user.name, userImage: user.image },
+      pathname: "/user-profile",
+      params: {
+        userId: user.id,
+        userName: user.name,
+        userImage: user.image,
+      },
     });
-  };
-
-  const handleAddUser = () => {
-    router.push("/add-user");
   };
 
   const renderUser = ({ item }: { item: (typeof INITIAL_USERS)[0] }) => (
@@ -134,17 +133,8 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Select a User</Text>
-      <Text style={styles.subtitle}>Choose who you want to test</Text>
-
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={handleAddUser}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="person-add" size={20} color="#fff" />
-        <Text style={styles.addButtonText}>Add New User</Text>
-      </TouchableOpacity>
+      <Text style={styles.title}>User Profiles</Text>
+      <Text style={styles.subtitle}>Select a user to view their results</Text>
 
       <FlatList
         data={users}
@@ -176,23 +166,8 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: "#666",
-    marginBottom: 16,
+    marginBottom: 24,
     textAlign: "center",
-  },
-  addButton: {
-    backgroundColor: "#007AFF",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  addButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
   },
   listContainer: {
     paddingBottom: 20,

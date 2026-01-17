@@ -88,9 +88,10 @@ const INITIAL_USERS = [
   },
 ];
 
-export default function HomeScreen() {
+export default function SelectUserScreen() {
   const params = useGlobalSearchParams();
   const [users, setUsers] = useState(INITIAL_USERS);
+  const { stationId, stationName, stationShortName } = params;
 
   // Check if a new user was added
   useEffect(() => {
@@ -112,13 +113,23 @@ export default function HomeScreen() {
 
   const handleUserSelect = (user: (typeof INITIAL_USERS)[0]) => {
     router.push({
-      pathname: "/(tabs)/testing",
-      params: { userId: user.id, userName: user.name, userImage: user.image },
+      pathname: "/user-profile",
+      params: {
+        userId: user.id,
+        userName: user.name,
+        userImage: user.image,
+        stationId,
+        stationName,
+        stationShortName,
+      },
     });
   };
 
   const handleAddUser = () => {
-    router.push("/add-user");
+    router.push({
+      pathname: "/add-user",
+      params: { stationId, stationName, stationShortName },
+    });
   };
 
   const renderUser = ({ item }: { item: (typeof INITIAL_USERS)[0] }) => (
@@ -134,6 +145,14 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      {stationShortName && (
+        <View style={styles.stationBadge}>
+          <Text style={styles.stationBadgeText}>
+            Testing: {stationShortName}
+          </Text>
+        </View>
+      )}
+
       <Text style={styles.title}>Select a User</Text>
       <Text style={styles.subtitle}>Choose who you want to test</Text>
 
@@ -163,8 +182,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8f9fa",
-    paddingTop: 20,
+    paddingTop: 60,
     paddingHorizontal: 16,
+  },
+  stationBadge: {
+    backgroundColor: "#007AFF",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  stationBadgeText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
   title: {
     fontSize: 32,
