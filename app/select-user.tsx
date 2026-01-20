@@ -9,6 +9,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSelectedUser } from "./context/SelectedUserContext";
+
+type UserType = (typeof INITIAL_USERS)[0];
 
 const INITIAL_USERS = [
   {
@@ -93,6 +96,8 @@ export default function SelectUserScreen() {
   const [users, setUsers] = useState(INITIAL_USERS);
   const { stationId, stationName, stationShortName } = params;
 
+  const { setUser } = useSelectedUser();
+
   // Check if a new user was added
   useEffect(() => {
     if (params.newUser) {
@@ -111,13 +116,18 @@ export default function SelectUserScreen() {
     }
   }, [params.newUser]);
 
-  const handleUserSelect = (user: (typeof INITIAL_USERS)[0]) => {
+  const handleUserSelect = (selectedUser: UserType) => {
+    // Set user in context
+    setUser({
+      id: selectedUser.id,
+      name: selectedUser.name,
+      image: selectedUser.image,
+    });
+
+    // Navigate immediately
     router.push({
-      pathname: "/user-profile",
+      pathname: "/(tabs)/testing",
       params: {
-        userId: user.id,
-        userName: user.name,
-        userImage: user.image,
         stationId,
         stationName,
         stationShortName,

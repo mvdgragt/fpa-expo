@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface TestResult {
   userId: string;
@@ -118,64 +119,66 @@ export default function UserProfileScreen() {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Image
-          source={{ uri: userImage as string }}
-          style={styles.profileImage}
-        />
-        <Text style={styles.userName}>{userName}</Text>
+    <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+      <ScrollView style={styles.container}>
+        <View style={styles.header}>
+          <Image
+            source={{ uri: userImage as string }}
+            style={styles.profileImage}
+          />
+          <Text style={styles.userName}>{userName}</Text>
 
-        <TouchableOpacity
-          style={styles.testButton}
-          onPress={handleStartTest}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="play-circle" size={20} color="#fff" />
-          <Text style={styles.testButtonText}>Start New Test</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={styles.testButton}
+            onPress={handleStartTest}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="play-circle" size={20} color="#fff" />
+            <Text style={styles.testButtonText}>Start New Test</Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.resultsContainer}>
-        <Text style={styles.sectionTitle}>Best Results</Text>
+        <View style={styles.resultsContainer}>
+          <Text style={styles.sectionTitle}>Best Results</Text>
 
-        {Object.keys(groupedResults).length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="analytics-outline" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>No results yet</Text>
-            <Text style={styles.emptySubtext}>
-              Complete a test to see results here
-            </Text>
-          </View>
-        ) : (
-          Object.entries(groupedResults).map(([stationId, data]) => (
-            <View key={stationId} style={styles.stationSection}>
-              <Text style={styles.stationName}>{data.stationShortName}</Text>
-
-              {data.results.map((result, index) => (
-                <View
-                  key={`${result.timestamp}-${index}`}
-                  style={styles.resultRow}
-                >
-                  <View style={styles.rankBadge}>
-                    <Text style={styles.rankText}>#{index + 1}</Text>
-                  </View>
-                  <View style={styles.resultDetails}>
-                    <Text style={styles.resultTime}>{result.time}s</Text>
-                    <Text style={styles.resultDate}>
-                      {formatDate(result.timestamp)}
-                    </Text>
-                  </View>
-                  {index === 0 && (
-                    <Ionicons name="trophy" size={24} color="#FFD700" />
-                  )}
-                </View>
-              ))}
+          {Object.keys(groupedResults).length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="analytics-outline" size={64} color="#ccc" />
+              <Text style={styles.emptyText}>No results yet</Text>
+              <Text style={styles.emptySubtext}>
+                Complete a test to see results here
+              </Text>
             </View>
-          ))
-        )}
-      </View>
-    </ScrollView>
+          ) : (
+            Object.entries(groupedResults).map(([stationId, data]) => (
+              <View key={stationId} style={styles.stationSection}>
+                <Text style={styles.stationName}>{data.stationShortName}</Text>
+
+                {data.results.map((result, index) => (
+                  <View
+                    key={`${result.timestamp}-${index}`}
+                    style={styles.resultRow}
+                  >
+                    <View style={styles.rankBadge}>
+                      <Text style={styles.rankText}>#{index + 1}</Text>
+                    </View>
+                    <View style={styles.resultDetails}>
+                      <Text style={styles.resultTime}>{result.time}s</Text>
+                      <Text style={styles.resultDate}>
+                        {formatDate(result.timestamp)}
+                      </Text>
+                    </View>
+                    {index === 0 && (
+                      <Ionicons name="trophy" size={24} color="#FFD700" />
+                    )}
+                  </View>
+                ))}
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 

@@ -1,22 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useGlobalSearchParams } from "expo-router";
+import { useGlobalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useSelectedUser } from "../context/SelectedUserContext";
 
 export default function TestingScreen() {
-  const {
-    userName,
-    userImage,
-    userId,
-    stationId,
-    stationName,
-    stationShortName,
-  } = useGlobalSearchParams();
+  const router = useRouter();
+  const { stationId, stationName, stationShortName } = useGlobalSearchParams();
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [finalTime, setFinalTime] = useState<number | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<number | null>(null);
+
+  const { user } = useSelectedUser();
+
+  const userName = user?.name;
+  const userImage = user?.image;
+  const userId = user?.id;
+  // console.log("TESTING SCREEN USER:", user);
 
   const startTimer = () => {
     setIsRunning(true);
@@ -69,6 +71,7 @@ export default function TestingScreen() {
       console.error("Error saving result:", error);
     }
   };
+
   useEffect(() => {
     resetTimer();
   }, [userId]);
@@ -90,6 +93,10 @@ export default function TestingScreen() {
     const ms = Math.floor((milliseconds % 1000) / 10);
 
     return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${ms.toString().padStart(2, "0")}`;
+  };
+
+  const handleChangeUser = () => {
+    router.push("/select-user");
   };
 
   useEffect(() => {
@@ -117,6 +124,15 @@ export default function TestingScreen() {
           />
           <Text style={styles.title}>Testing:</Text>
           <Text style={styles.userName}>{userName}</Text>
+
+          <TouchableOpacity
+            style={styles.changeUserButton}
+            onPress={handleChangeUser}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="swap-horizontal" size={20} color="#007AFF" />
+            <Text style={styles.changeUserButtonText}>Change User</Text>
+          </TouchableOpacity>
 
           <View style={styles.timerContainer}>
             <Text style={styles.timerText}>{formatTime(time)}</Text>
@@ -207,7 +223,24 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#007AFF",
     textAlign: "center",
-    marginBottom: 40,
+    marginBottom: 20,
+  },
+  changeUserButton: {
+    backgroundColor: "#25292e",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 2,
+    borderColor: "#007AFF",
+    marginBottom: 20,
+  },
+  changeUserButtonText: {
+    color: "#007AFF",
+    fontSize: 16,
+    fontWeight: "600",
   },
   timerContainer: {
     alignItems: "center",

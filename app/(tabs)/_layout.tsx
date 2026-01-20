@@ -17,18 +17,19 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="stations"
         options={{
-          title: "Home",
+          title: "Stations",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
-              name={focused ? "home" : "home-outline"}
+              name={focused ? "list" : "list-outline"}
               size={size}
               color={color}
             />
           ),
         }}
       />
+
       <Tabs.Screen
         name="testing"
         options={{
@@ -42,6 +43,7 @@ export default function TabLayout() {
           ),
         }}
       />
+
       <Tabs.Screen
         name="results"
         options={{
@@ -55,6 +57,7 @@ export default function TabLayout() {
           ),
         }}
       />
+
       <Tabs.Screen
         name="profiles"
         options={{
