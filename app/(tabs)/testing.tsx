@@ -156,6 +156,28 @@ export default function TestingScreen() {
     });
   };
 
+  const handleSelectStation = () => {
+    router.push("/(tabs)/stations");
+  };
+
+  const handleSelectUser = () => {
+    if (!stationId) {
+      Alert.alert(
+        "Select Station First",
+        "Please select a station before choosing a user.",
+      );
+      return;
+    }
+    router.push({
+      pathname: "/select-user",
+      params: {
+        stationId,
+        stationName,
+        stationShortName,
+      },
+    });
+  };
+
   const formatTime = (milliseconds: number) => {
     const totalSeconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -166,6 +188,76 @@ export default function TestingScreen() {
       .toString()
       .padStart(2, "0")}.${ms.toString().padStart(2, "0")}`;
   };
+
+  // Show setup screen if user or station is not selected
+  if (!user || !stationId) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.setupContainer}>
+          <Ionicons name="timer-outline" size={80} color="#007AFF" />
+          <Text style={styles.setupTitle}>Ready to Test?</Text>
+          <Text style={styles.setupSubtitle}>
+            Select a station and user to begin testing
+          </Text>
+
+          <View style={styles.setupButtonsContainer}>
+            {!stationId ? (
+              <TouchableOpacity
+                style={styles.setupButton}
+                onPress={handleSelectStation}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="location" size={24} color="#fff" />
+                <Text style={styles.setupButtonText}>Select Station</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.selectedBadge}>
+                <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                <Text style={styles.selectedBadgeText}>{stationShortName}</Text>
+              </View>
+            )}
+
+            {!user ? (
+              <TouchableOpacity
+                style={[
+                  styles.setupButton,
+                  !stationId && styles.setupButtonDisabled,
+                ]}
+                onPress={handleSelectUser}
+                activeOpacity={0.8}
+                disabled={!stationId}
+              >
+                <Ionicons
+                  name="person"
+                  size={24}
+                  color={!stationId ? "#999" : "#fff"}
+                />
+                <Text
+                  style={[
+                    styles.setupButtonText,
+                    !stationId && styles.setupButtonTextDisabled,
+                  ]}
+                >
+                  Select User
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.selectedBadge}>
+                <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                <Text style={styles.selectedBadgeText}>{user.name}</Text>
+              </View>
+            )}
+          </View>
+
+          {!stationId && (
+            <Text style={styles.setupHint}>
+              💡 Start by selecting a station from the Stations tab
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -308,6 +400,83 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: 20,
     alignItems: "center",
+  },
+  setupContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    maxWidth: 400,
+  },
+  setupTitle: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: "#1a1a1a",
+    marginTop: 24,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  setupSubtitle: {
+    fontSize: 16,
+    color: "#666",
+    marginBottom: 40,
+    textAlign: "center",
+  },
+  setupButtonsContainer: {
+    width: "100%",
+    gap: 16,
+  },
+  setupButton: {
+    backgroundColor: "#007AFF",
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  setupButtonDisabled: {
+    backgroundColor: "#ccc",
+    opacity: 0.5,
+  },
+  setupButtonText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  setupButtonTextDisabled: {
+    color: "#999",
+  },
+  selectedBadge: {
+    backgroundColor: "#E8F5E9",
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    borderWidth: 2,
+    borderColor: "#4CAF50",
+  },
+  selectedBadgeText: {
+    color: "#2E7D32",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  setupHint: {
+    fontSize: 14,
+    color: "#666",
+    marginTop: 24,
+    textAlign: "center",
+    fontStyle: "italic",
   },
   stationBadge: {
     flexDirection: "row",

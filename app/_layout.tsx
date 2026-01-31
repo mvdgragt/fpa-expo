@@ -20,7 +20,11 @@ export default function RootLayout() {
   return (
     <SelectedUserProvider>
       <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="add-user" options={{ headerShown: false }} />
+          <Stack.Screen name="user-results" options={{ headerShown: false }} />
+        </Stack>
       </SafeAreaProvider>
     </SelectedUserProvider>
   );

@@ -54,7 +54,24 @@ export default function ResultsScreen() {
 
         // Sort each station's results by time (best first) and keep top 3
         Object.keys(grouped).forEach((stationId) => {
-          grouped[stationId].topResults = grouped[stationId].topResults
+          const results = grouped[stationId].topResults;
+
+          // Keep best result per user
+          const bestPerUser: { [userId: string]: TestResult } = {};
+
+          results.forEach((result) => {
+            const existing = bestPerUser[result.userId];
+
+            if (
+              !existing ||
+              parseFloat(result.time) < parseFloat(existing.time)
+            ) {
+              bestPerUser[result.userId] = result;
+            }
+          });
+
+          // Sort best results and keep top 3
+          grouped[stationId].topResults = Object.values(bestPerUser)
             .sort((a, b) => parseFloat(a.time) - parseFloat(b.time))
             .slice(0, 3);
         });

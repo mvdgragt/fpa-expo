@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   leaderboardButton: {
-    backgroundColor: "#FFD700",
+    backgroundColor: "#47464c",
   },
   newTestButton: {
     backgroundColor: "#4CAF50",
