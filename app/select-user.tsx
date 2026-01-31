@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useGlobalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   FlatList,
   Image,
@@ -12,6 +13,8 @@ import {
 import { useSelectedUser } from "../context/SelectedUserContext";
 
 type UserType = (typeof INITIAL_USERS)[0];
+
+const STORAGE_KEY = "@users_list";
 
 const INITIAL_USERS = [
   {
@@ -93,47 +96,103 @@ const INITIAL_USERS = [
 
 export default function SelectUserScreen() {
   const params = useGlobalSearchParams();
-  const [users, setUsers] = useState(INITIAL_USERS);
+  const [users, setUsers] = useState<UserType[]>(INITIAL_USERS);
+  const [isLoading, setIsLoading] = useState(true);
   const { stationId, stationName, stationShortName } = params;
-
   const { setUser } = useSelectedUser();
 
-  // Check if a new user was added
+  // Load users from storage on mount
   useEffect(() => {
-    if (params.newUser) {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    try {
+      const storedUsers = await AsyncStorage.getItem(STORAGE_KEY);
+      if (storedUsers) {
+        const parsed = JSON.parse(storedUsers);
+        // Merge stored users with initial users, removing duplicates
+        const allUsers = [...parsed, ...INITIAL_USERS];
+        const uniqueUsers = allUsers.filter(
+          (user, index, self) =>
+            index === self.findIndex((u) => u.id === user.id),
+        );
+        setUsers(uniqueUsers);
+      } else {
+        // No stored users, use initial users
+        setUsers(INITIAL_USERS);
+      }
+    } catch (error) {
+      console.error("Error loading users:", error);
+      setUsers(INITIAL_USERS);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUserSelect = useCallback(
+    (selectedUser: UserType) => {
+      // Set user in context
+      setUser({
+        id: selectedUser.id,
+        name: selectedUser.name,
+        image: selectedUser.image,
+      });
+
+      // Navigate immediately
+      router.push({
+        pathname: "/(tabs)/testing",
+        params: {
+          stationId,
+          stationName,
+          stationShortName,
+        },
+      });
+    },
+    [setUser, stationId, stationName, stationShortName],
+  );
+
+  const addNewUser = useCallback(
+    async (newUser: UserType) => {
+      try {
+        // Check if user already exists
+        const exists = users.some((u) => u.id === newUser.id);
+        if (exists) {
+          // User already added, just select them
+          // handleUserSelect(newUser);
+          return;
+        }
+
+        const updatedUsers = [newUser, ...users];
+
+        // Only save the NEW users (not the initial ones) to AsyncStorage
+        const newUsersOnly = updatedUsers.filter(
+          (user) => !INITIAL_USERS.some((initial) => initial.id === user.id),
+        );
+
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newUsersOnly));
+        setUsers(updatedUsers);
+
+        // Auto-select the newly added user
+        // handleUserSelect(newUser);
+      } catch (error) {
+        console.error("Error saving user:", error);
+      }
+    },
+    [users],
+  );
+
+  // Handle new user addition
+  useEffect(() => {
+    if (params.newUser && !isLoading) {
       try {
         const newUser = JSON.parse(params.newUser as string);
-        setUsers((prevUsers) => {
-          const exists = prevUsers.some((u) => u.id === newUser.id);
-          if (!exists) {
-            return [newUser, ...prevUsers];
-          }
-          return prevUsers;
-        });
+        addNewUser(newUser);
       } catch (error) {
         console.error("Error parsing new user:", error);
       }
     }
-  }, [params.newUser]);
-
-  const handleUserSelect = (selectedUser: UserType) => {
-    // Set user in context
-    setUser({
-      id: selectedUser.id,
-      name: selectedUser.name,
-      image: selectedUser.image,
-    });
-
-    // Navigate immediately
-    router.push({
-      pathname: "/(tabs)/testing",
-      params: {
-        stationId,
-        stationName,
-        stationShortName,
-      },
-    });
-  };
+  }, [params.newUser, isLoading, addNewUser]);
 
   const handleAddUser = () => {
     router.push({

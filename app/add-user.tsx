@@ -32,12 +32,10 @@ export default function AddUserScreen() {
       image: getRandomAvatar(),
     };
 
+    // Navigate back to select-user with the new user
     router.push({
-      pathname: "/(tabs)/testing",
+      pathname: "/select-user",
       params: {
-        userId: newUser.id,
-        userName: newUser.name,
-        userImage: newUser.image,
         newUser: JSON.stringify(newUser),
         stationId,
         stationName,
@@ -67,7 +65,7 @@ export default function AddUserScreen() {
           onPress={handleAddUser}
           activeOpacity={0.8}
         >
-          <Text style={styles.addButtonText}>Add User & Start Testing</Text>
+          <Text style={styles.addButtonText}>Add User</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

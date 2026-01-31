@@ -71,6 +71,19 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="benchmark"
+        options={{
+          title: "Benchmark",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? "bar-chart" : "bar-chart-outline"}
+              size={28}
+              color={color}
+            />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
