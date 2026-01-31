@@ -1,307 +1,280 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useGlobalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useSelectedUser } from "../context/SelectedUserContext";
+import { useEffect, useState } from "react";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 
-export default function TestingScreen() {
-  const router = useRouter();
-  const { stationId, stationName, stationShortName } = useGlobalSearchParams();
-  const [time, setTime] = useState(0);
-  const [isRunning, setIsRunning] = useState(false);
-  const [finalTime, setFinalTime] = useState<number | null>(null);
-  const intervalRef = useRef<number | null>(null);
+interface TestResult {
+  userId: string;
+  userName: string;
+  userImage: string;
+  stationId: string;
+  stationName: string;
+  stationShortName: string;
+  time: string;
+  timestamp: string;
+}
 
-  const { user } = useSelectedUser();
-
-  const userName = user?.name;
-  const userImage = user?.image;
-  const userId = user?.id;
-  // console.log("TESTING SCREEN USER:", user);
-
-  const startTimer = () => {
-    setIsRunning(true);
-    setFinalTime(null);
-    const startTime = Date.now() - time;
-
-    intervalRef.current = setInterval(() => {
-      setTime(Date.now() - startTime);
-    }, 10);
+interface GroupedResults {
+  [stationId: string]: {
+    stationName: string;
+    stationShortName: string;
+    topResults: TestResult[];
   };
+}
 
-  const stopTimer = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setIsRunning(false);
-    setFinalTime(time);
-
-    // Save result to AsyncStorage
-    saveResult(time);
-  };
-
-  const saveResult = async (timeMs: number) => {
-    try {
-      const timeInSeconds = (timeMs / 1000).toFixed(2);
-      const result = {
-        userId: userId as string,
-        userName: userName as string,
-        userImage: userImage as string,
-        stationId: stationId as string,
-        stationName: stationName as string,
-        stationShortName: stationShortName as string,
-        time: timeInSeconds,
-        timestamp: new Date().toISOString(),
-      };
-
-      // Get existing results from AsyncStorage
-      const existingResults = await AsyncStorage.getItem("testResults");
-      const results = existingResults ? JSON.parse(existingResults) : [];
-
-      // Add new result
-      results.push(result);
-
-      // Save back to AsyncStorage
-      await AsyncStorage.setItem("testResults", JSON.stringify(results));
-
-      console.log("Result saved:", result);
-    } catch (error) {
-      console.error("Error saving result:", error);
-    }
-  };
+export default function ResultsScreen() {
+  const [groupedResults, setGroupedResults] = useState<GroupedResults>({});
 
   useEffect(() => {
-    resetTimer();
-  }, [userId]);
+    loadResults();
 
-  const resetTimer = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setTime(0);
-    setIsRunning(false);
-    setFinalTime(null);
-  };
-
-  const formatTime = (milliseconds: number) => {
-    const totalSeconds = Math.floor(milliseconds / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    const ms = Math.floor((milliseconds % 1000) / 10);
-
-    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}.${ms.toString().padStart(2, "0")}`;
-  };
-
-  const handleChangeUser = () => {
-    router.push("/select-user");
-  };
-
-  useEffect(() => {
-    // Cleanup interval on unmount
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
+    // Refresh results every second to catch new ones
+    const interval = setInterval(loadResults, 1000);
+    return () => clearInterval(interval);
   }, []);
 
+  const loadResults = async () => {
+    try {
+      const savedResults = await AsyncStorage.getItem("testResults");
+      if (savedResults) {
+        const allResults: TestResult[] = JSON.parse(savedResults);
+
+        // Group by station
+        const grouped: GroupedResults = {};
+        allResults.forEach((result) => {
+          if (!grouped[result.stationId]) {
+            grouped[result.stationId] = {
+              stationName: result.stationName,
+              stationShortName: result.stationShortName,
+              topResults: [],
+            };
+          }
+          grouped[result.stationId].topResults.push(result);
+        });
+
+        // Sort each station's results by time (best first) and keep top 3
+        Object.keys(grouped).forEach((stationId) => {
+          grouped[stationId].topResults = grouped[stationId].topResults
+            .sort((a, b) => parseFloat(a.time) - parseFloat(b.time))
+            .slice(0, 3);
+        });
+
+        setGroupedResults(grouped);
+      }
+    } catch (error) {
+      console.error("Error loading results:", error);
+    }
+  };
+
+  const formatDate = (isoString: string) => {
+    const date = new Date(isoString);
+    const today = new Date();
+    const isToday = date.toDateString() === today.toDateString();
+
+    const timeStr = date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    if (isToday) {
+      return `Today, ${timeStr}`;
+    }
+
+    const dateStr = date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+
+    return `${dateStr}, ${timeStr}`;
+  };
+
+  const getMedalColor = (rank: number) => {
+    switch (rank) {
+      case 0:
+        return "#FFD700"; // Gold
+      case 1:
+        return "#C0C0C0"; // Silver
+      case 2:
+        return "#CD7F32"; // Bronze
+      default:
+        return "#999";
+    }
+  };
+
+  const getMedalIcon = (rank: number) => {
+    return "medal";
+  };
+
   return (
-    <View style={styles.container}>
-      {userName ? (
-        <>
-          {stationShortName && (
-            <View style={styles.stationBadge}>
-              <Text style={styles.stationBadgeText}>{stationShortName}</Text>
-            </View>
-          )}
+    <ScrollView style={styles.container}>
+      <Text style={styles.title}>Leaderboard</Text>
 
-          <Image
-            source={{ uri: userImage as string }}
-            style={styles.userImage}
-          />
-          <Text style={styles.title}>Testing:</Text>
-          <Text style={styles.userName}>{userName}</Text>
-
-          <TouchableOpacity
-            style={styles.changeUserButton}
-            onPress={handleChangeUser}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="swap-horizontal" size={20} color="#007AFF" />
-            <Text style={styles.changeUserButtonText}>Change User</Text>
-          </TouchableOpacity>
-
-          <View style={styles.timerContainer}>
-            <Text style={styles.timerText}>{formatTime(time)}</Text>
-            {finalTime !== null && (
-              <Text style={styles.resultText}>
-                Final Time: {formatTime(finalTime)}
-              </Text>
-            )}
-          </View>
-
-          <View style={styles.buttonContainer}>
-            {!isRunning && finalTime === null && (
-              <TouchableOpacity
-                style={styles.startButton}
-                onPress={startTimer}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="play" size={32} color="#fff" />
-                <Text style={styles.buttonText}>Start</Text>
-              </TouchableOpacity>
-            )}
-
-            {isRunning && (
-              <TouchableOpacity
-                style={styles.stopButton}
-                onPress={stopTimer}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="stop" size={32} color="#fff" />
-                <Text style={styles.buttonText}>Stop</Text>
-              </TouchableOpacity>
-            )}
-
-            {!isRunning && finalTime !== null && (
-              <TouchableOpacity
-                style={styles.resetButton}
-                onPress={resetTimer}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="refresh" size={32} color="#fff" />
-                <Text style={styles.buttonText}>Try Again</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </>
+      {Object.keys(groupedResults).length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="trophy-outline" size={64} color="#ccc" />
+          <Text style={styles.emptyText}>No results yet</Text>
+          <Text style={styles.emptySubtext}>
+            Complete a test to see the leaderboard
+          </Text>
+        </View>
       ) : (
-        <Text style={styles.text}>No user selected</Text>
+        Object.entries(groupedResults).map(([stationId, data]) => (
+          <View key={stationId} style={styles.stationSection}>
+            <View style={styles.stationHeader}>
+              <Ionicons name="fitness" size={24} color="#007AFF" />
+              <Text style={styles.stationTitle}>{data.stationShortName}</Text>
+            </View>
+
+            {data.topResults.map((result, index) => (
+              <View
+                key={`${result.userId}-${result.timestamp}-${index}`}
+                style={[styles.resultCard, index === 0 && styles.firstPlace]}
+              >
+                <View style={styles.rankContainer}>
+                  <Ionicons
+                    name={getMedalIcon(index)}
+                    size={32}
+                    color={getMedalColor(index)}
+                  />
+                  <Text style={styles.rankNumber}>#{index + 1}</Text>
+                </View>
+
+                <Image
+                  source={{ uri: result.userImage }}
+                  style={styles.resultUserImage}
+                />
+
+                <View style={styles.resultInfo}>
+                  <Text style={styles.resultUserName}>{result.userName}</Text>
+                  <Text style={styles.resultDate}>
+                    {formatDate(result.timestamp)}
+                  </Text>
+                </View>
+
+                <View style={styles.timeContainer}>
+                  <Text style={styles.resultTime}>{result.time}s</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ))
       )}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#25292e",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  stationBadge: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    marginBottom: 20,
-  },
-  stationBadgeText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  userImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    marginBottom: 24,
-    borderWidth: 4,
-    borderColor: "#fff",
+    backgroundColor: "#f8f9fa",
+    paddingTop: 20,
+    paddingHorizontal: 16,
   },
   title: {
-    fontSize: 24,
-    color: "#fff",
-    marginBottom: 12,
-  },
-  userName: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#007AFF",
-    textAlign: "center",
+    color: "#1a1a1a",
     marginBottom: 20,
+    textAlign: "center",
   },
-  changeUserButton: {
-    backgroundColor: "#25292e",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
+  stationSection: {
+    marginBottom: 24,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  stationHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderWidth: 2,
-    borderColor: "#007AFF",
-    marginBottom: 20,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: "#007AFF",
   },
-  changeUserButtonText: {
+  stationTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
     color: "#007AFF",
+  },
+  resultCard: {
+    backgroundColor: "#f8f9fa",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  firstPlace: {
+    backgroundColor: "#FFF9E6",
+    borderColor: "#FFD700",
+  },
+  rankContainer: {
+    alignItems: "center",
+    marginRight: 12,
+    minWidth: 50,
+  },
+  rankNumber: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#666",
+    marginTop: 2,
+  },
+  resultUserImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  resultInfo: {
+    flex: 1,
+  },
+  resultUserName: {
     fontSize: 16,
-    fontWeight: "600",
-  },
-  timerContainer: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  timerText: {
-    fontSize: 64,
     fontWeight: "bold",
-    color: "#fff",
-    fontVariant: ["tabular-nums"],
+    color: "#1a1a1a",
+    marginBottom: 4,
   },
-  resultText: {
-    fontSize: 20,
-    color: "#4CAF50",
-    marginTop: 16,
-    fontWeight: "600",
+  resultDate: {
+    fontSize: 12,
+    color: "#999",
   },
-  buttonContainer: {
-    flexDirection: "row",
-    gap: 20,
-  },
-  startButton: {
+  timeContainer: {
     backgroundColor: "#4CAF50",
-    paddingHorizontal: 40,
-    paddingVertical: 20,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minWidth: 160,
-    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
-  stopButton: {
-    backgroundColor: "#f44336",
-    paddingHorizontal: 40,
-    paddingVertical: 20,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minWidth: 160,
-    justifyContent: "center",
-  },
-  resetButton: {
-    backgroundColor: "#007AFF",
-    paddingHorizontal: 40,
-    paddingVertical: 20,
-    borderRadius: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minWidth: 160,
-    justifyContent: "center",
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-  text: {
-    color: "#fff",
+  resultTime: {
     fontSize: 18,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 24,
+    fontWeight: "600",
+    color: "#666",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 16,
+    color: "#999",
   },
 });

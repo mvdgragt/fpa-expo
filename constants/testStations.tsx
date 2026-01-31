@@ -26,6 +26,24 @@ export const testStations = [
     unit: "seconds",
     description: "Measures short-distance acceleration from a static start.",
   },
+  {
+    id: "twenty-meter-sprint",
+    name: "20 Meter Sprint",
+    shortName: "20m Sprint",
+    distanceMeters: 20,
+    category: "acceleration",
+    unit: "seconds",
+    description: "Measures short-distance acceleration from a static start.",
+  },
+  {
+    id: "run-home",
+    name: "Run Home",
+    shortName: "Run Home",
+    distanceMeters: 100,
+    category: "speed",
+    unit: "seconds",
+    description: "Measures short-distance acceleration from a static start.",
+  },
 ];
 
 export type TestStation = (typeof testStations)[0];
