@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSelectedUser } from "./context/SelectedUserContext";
+import { useSelectedUser } from "../context/SelectedUserContext";
 
 type UserType = (typeof INITIAL_USERS)[0];
 

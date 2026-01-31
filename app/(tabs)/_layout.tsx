@@ -45,9 +45,9 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="results"
+        name="leaderboard"
         options={{
-          title: "Results",
+          title: "Leaderboard",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "bar-chart" : "bar-chart-outline"}
@@ -59,9 +59,9 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="profiles"
+        name="user-results"
         options={{
-          title: "Profiles",
+          title: "My Results",
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons
               name={focused ? "people" : "people-outline"}

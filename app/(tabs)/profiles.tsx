@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSelectedUser } from "../context/SelectedUserContext";
+import { useSelectedUser } from "../../context/SelectedUserContext";
 
 interface TestResult {
   userId: string;

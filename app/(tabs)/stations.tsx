@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useGlobalSearchParams } from "expo-router";
 import {
   FlatList,
   StyleSheet,
@@ -10,15 +10,31 @@ import {
 import { testStations } from "../../constants/testStations";
 
 export default function StationsScreen() {
+  const params = useGlobalSearchParams();
+  const returnToTesting = params.returnToTesting === "true";
+
   const handleStationSelect = (station: (typeof testStations)[0]) => {
-    router.push({
-      pathname: "/select-user",
-      params: {
-        stationId: station.id,
-        stationName: station.name,
-        stationShortName: station.shortName,
-      },
-    });
+    if (returnToTesting) {
+      // Go directly to testing with the selected station
+      router.push({
+        pathname: "/(tabs)/testing",
+        params: {
+          stationId: station.id,
+          stationName: station.name,
+          stationShortName: station.shortName,
+        },
+      });
+    } else {
+      // Normal flow: go to select-user first
+      router.push({
+        pathname: "/select-user",
+        params: {
+          stationId: station.id,
+          stationName: station.name,
+          stationShortName: station.shortName,
+        },
+      });
+    }
   };
 
   const getCategoryIcon = (category: string) => {
@@ -57,8 +73,14 @@ export default function StationsScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Select Test Station</Text>
-      <Text style={styles.subtitle}>Choose which test to perform</Text>
+      <Text style={styles.title}>
+        {returnToTesting ? "Change Station" : "Select Test Station"}
+      </Text>
+      <Text style={styles.subtitle}>
+        {returnToTesting
+          ? "Choose a new station to test"
+          : "Choose which test to perform"}
+      </Text>
 
       <FlatList
         data={testStations}
