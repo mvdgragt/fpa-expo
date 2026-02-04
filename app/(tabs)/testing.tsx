@@ -12,21 +12,17 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BleManager, Device } from "react-native-ble-plx";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useBle } from "../../context/BLEContext"; // Import the BLE hook
 import { useSelectedUser } from "../../context/SelectedUserContext";
-
-const ESP32_NAME = "FPA HUB"; // Match your ESP32 name
-const bleManager = new BleManager();
 
 export default function TestingScreen() {
   const params = useGlobalSearchParams();
   const { user } = useSelectedUser();
+  const { connectedDevice, isConnecting } = useBle(); // Use global BLE state
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
-  const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
 
   const { stationId, stationName, stationShortName } = params;
 
@@ -34,62 +30,6 @@ export default function TestingScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const previousStationId = useRef(stationId);
-
-  // BLE Connection Effect
-  useEffect(() => {
-    const subscription = bleManager.onStateChange((state) => {
-      if (state === "PoweredOn") {
-        checkAndConnect();
-        subscription.remove();
-      }
-    }, true);
-
-    return () => {
-      bleManager.destroy();
-    };
-  }, []);
-
-  const checkAndConnect = async () => {
-    setIsConnecting(true);
-    try {
-      const connectedDevices = await bleManager.connectedDevices([]);
-      const esp32Device = connectedDevices.find((device) =>
-        device.name?.includes(ESP32_NAME),
-      );
-      if (esp32Device) {
-        setConnectedDevice(esp32Device);
-        setIsConnecting(false);
-        return;
-      }
-
-      bleManager.startDeviceScan(null, null, async (error, device) => {
-        if (error) {
-          console.warn("Scan error:", error);
-          setIsConnecting(false);
-          return;
-        }
-        if (device && device.name?.includes(ESP32_NAME)) {
-          bleManager.stopDeviceScan();
-          try {
-            const connected = await device.connect();
-            await connected.discoverAllServicesAndCharacteristics();
-            setConnectedDevice(connected);
-          } catch (err) {
-            console.warn("Connection error:", err);
-          }
-          setIsConnecting(false);
-        }
-      });
-
-      setTimeout(() => {
-        bleManager.stopDeviceScan();
-        setIsConnecting(false);
-      }, 10000);
-    } catch (e) {
-      console.warn("Error in checkAndConnect:", e);
-      setIsConnecting(false);
-    }
-  };
 
   // Detect station change and trigger animation
   useEffect(() => {

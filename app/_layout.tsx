@@ -1,8 +1,9 @@
+// app/_layout.tsx
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { BLEProvider } from "../context/BLEContext";
+import { BleProvider } from "../context/BLEContext"; // Updated import
 import { SelectedUserProvider } from "../context/SelectedUserContext";
 
 SplashScreen.setOptions({
@@ -16,16 +17,17 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <SelectedUserProvider>
-      <BLEProvider>
+    <BleProvider>
+      {" "}
+      {/* Moved BleProvider to outermost wrapper */}
+      <SelectedUserProvider>
         <SafeAreaProvider>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="add-user" options={{ headerShown: false }} />
-            {/* REMOVED user-results from here */}
           </Stack>
         </SafeAreaProvider>
-      </BLEProvider>
-    </SelectedUserProvider>
+      </SelectedUserProvider>
+    </BleProvider>
   );
 }
