@@ -20,7 +20,6 @@ export default function RootLayout() {
       <BLEProvider>
         <SafeAreaProvider>
           <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="ble-test" options={{ title: "BLE Test" }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="add-user" options={{ headerShown: false }} />
             {/* REMOVED user-results from here */}

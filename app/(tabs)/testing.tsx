@@ -1,3 +1,4 @@
+// app/testing.tsx
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useGlobalSearchParams } from "expo-router";
@@ -11,17 +12,21 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { BLEStatusBar } from "../../components/BLEStatusBar";
-import { useBLE } from "../../context/BLEContext";
+import { BleManager, Device } from "react-native-ble-plx";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useSelectedUser } from "../../context/SelectedUserContext";
 
+const ESP32_NAME = "FPA HUB"; // Match your ESP32 name
+const bleManager = new BleManager();
+
 export default function TestingScreen() {
-  const { isConnected } = useBLE();
   const params = useGlobalSearchParams();
   const { user } = useSelectedUser();
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   const { stationId, stationName, stationShortName } = params;
 
@@ -30,15 +35,69 @@ export default function TestingScreen() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const previousStationId = useRef(stationId);
 
+  // BLE Connection Effect
+  useEffect(() => {
+    const subscription = bleManager.onStateChange((state) => {
+      if (state === "PoweredOn") {
+        checkAndConnect();
+        subscription.remove();
+      }
+    }, true);
+
+    return () => {
+      bleManager.destroy();
+    };
+  }, []);
+
+  const checkAndConnect = async () => {
+    setIsConnecting(true);
+    try {
+      const connectedDevices = await bleManager.connectedDevices([]);
+      const esp32Device = connectedDevices.find((device) =>
+        device.name?.includes(ESP32_NAME),
+      );
+      if (esp32Device) {
+        setConnectedDevice(esp32Device);
+        setIsConnecting(false);
+        return;
+      }
+
+      bleManager.startDeviceScan(null, null, async (error, device) => {
+        if (error) {
+          console.warn("Scan error:", error);
+          setIsConnecting(false);
+          return;
+        }
+        if (device && device.name?.includes(ESP32_NAME)) {
+          bleManager.stopDeviceScan();
+          try {
+            const connected = await device.connect();
+            await connected.discoverAllServicesAndCharacteristics();
+            setConnectedDevice(connected);
+          } catch (err) {
+            console.warn("Connection error:", err);
+          }
+          setIsConnecting(false);
+        }
+      });
+
+      setTimeout(() => {
+        bleManager.stopDeviceScan();
+        setIsConnecting(false);
+      }, 10000);
+    } catch (e) {
+      console.warn("Error in checkAndConnect:", e);
+      setIsConnecting(false);
+    }
+  };
+
   // Detect station change and trigger animation
   useEffect(() => {
     if (
       previousStationId.current !== stationId &&
       previousStationId.current !== undefined
     ) {
-      // Station changed - trigger animation
       Animated.sequence([
-        // Fade out and scale down
         Animated.parallel([
           Animated.timing(fadeAnim, {
             toValue: 0,
@@ -51,7 +110,6 @@ export default function TestingScreen() {
             useNativeDriver: true,
           }),
         ]),
-        // Fade in and scale up
         Animated.parallel([
           Animated.timing(fadeAnim, {
             toValue: 1,
@@ -88,7 +146,6 @@ export default function TestingScreen() {
     setIsRunning(false);
     const finalTime = (time / 1000).toFixed(2);
 
-    // Save result
     try {
       const result = {
         userId: user?.id || "unknown",
@@ -130,14 +187,14 @@ export default function TestingScreen() {
   };
 
   const handleReset = () => {
-    if (isRunning) return; // Prevent reset while running
+    if (isRunning) return;
     setIsRunning(false);
     setTime(0);
     setHasStarted(false);
   };
 
   const handleChangeUser = () => {
-    if (isRunning) return; // Prevent change while running
+    if (isRunning) return;
     router.push({
       pathname: "/select-user",
       params: {
@@ -149,8 +206,7 @@ export default function TestingScreen() {
   };
 
   const handleChangeStation = () => {
-    if (isRunning) return; // Prevent change while running
-    // Navigate to stations with a flag to return to testing
+    if (isRunning) return;
     router.push({
       pathname: "/(tabs)/stations",
       params: {
@@ -186,7 +242,6 @@ export default function TestingScreen() {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     const ms = Math.floor((milliseconds % 1000) / 10);
-
     return `${minutes.toString().padStart(2, "0")}:${seconds
       .toString()
       .padStart(2, "0")}.${ms.toString().padStart(2, "0")}`;
@@ -195,15 +250,34 @@ export default function TestingScreen() {
   // Show setup screen if user or station is not selected
   if (!user || !stationId) {
     return (
-      <View style={styles.container}>
-        <BLEStatusBar />
-        {!isConnected && (
-          <View style={styles.warningBox}>
-            <Text style={styles.warningText}>
-              ⚠️ Please connect to your sensor first
-            </Text>
+      <SafeAreaView style={styles.container}>
+        {/* Connecting Modal */}
+        {isConnecting && (
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalBox}>
+              <Ionicons
+                name="bluetooth"
+                size={32}
+                color="#007AFF"
+                style={{ marginBottom: 10 }}
+              />
+              <Text style={styles.modalText}>Connecting to FPA HUB</Text>
+            </View>
           </View>
         )}
+
+        {/* Connected Pill */}
+        {connectedDevice && (
+          <View style={styles.connectedContainer}>
+            <View style={styles.connectedPill}>
+              <View style={styles.statusDot} />
+              <Text style={styles.connectedPillText}>
+                {connectedDevice.name} Linked
+              </Text>
+            </View>
+          </View>
+        )}
+
         <View style={styles.setupContainer}>
           <Ionicons name="timer-outline" size={80} color="#007AFF" />
           <Text style={styles.setupTitle}>Ready to Test?</Text>
@@ -266,12 +340,39 @@ export default function TestingScreen() {
             </Text>
           )}
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      {/* Connecting Modal */}
+      {isConnecting && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Ionicons
+              name="bluetooth"
+              size={32}
+              color="#007AFF"
+              style={{ marginBottom: 10 }}
+            />
+            <Text style={styles.modalText}>Connecting to FPA HUB...</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Connected Pill */}
+      {connectedDevice && (
+        <View style={styles.connectedContainer}>
+          <View style={styles.connectedPill}>
+            <View style={styles.statusDot} />
+            <Text style={styles.connectedPillText}>
+              {connectedDevice.name} Linked
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Station Info with Animation */}
       {stationShortName && (
         <Animated.View
@@ -400,7 +501,7 @@ export default function TestingScreen() {
           </>
         )}
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -408,21 +509,63 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8f9fa",
-    paddingTop: 60,
     paddingHorizontal: 20,
     alignItems: "center",
   },
-  warningBox: {
-    backgroundColor: "#ff5555",
-    padding: 16,
-    margin: 20,
-    borderRadius: 12,
+  // Modal Styles
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
   },
-  warningText: {
-    color: "#fff",
-    fontSize: 16,
+  modalBox: {
+    backgroundColor: "#fff",
+    padding: 30,
+    borderRadius: 20,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalText: {
+    fontSize: 18,
     fontWeight: "600",
-    textAlign: "center",
+    color: "#333",
+  },
+  // Discreet Pill Styles
+  connectedContainer: {
+    width: "100%",
+    alignItems: "center",
+    paddingTop: 10,
+    marginBottom: 15,
+  },
+  connectedPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#e8f5e9",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#c8e6c9",
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#4CAF50",
+    marginRight: 6,
+  },
+  connectedPillText: {
+    color: "#2e7d32",
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   setupContainer: {
     flex: 1,
@@ -510,6 +653,7 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     marginBottom: 30,
     gap: 8,
+    marginTop: 5,
   },
   stationBadgeText: {
     color: "#fff",
