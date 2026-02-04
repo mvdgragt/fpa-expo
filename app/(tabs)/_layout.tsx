@@ -1,89 +1,32 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { useEffect } from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { BLEProvider } from "../../context/BLEContext";
+import { SelectedUserProvider } from "../../context/SelectedUserContext";
 
-export default function TabLayout() {
+SplashScreen.setOptions({
+  duration: 1000,
+  fade: true,
+});
+
+export default function RootLayout() {
+  useEffect(() => {
+    SplashScreen.hideAsync();
+  }, []);
+
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: "#007AFF",
-        tabBarInactiveTintColor: "gray",
-        headerStyle: {
-          backgroundColor: "#007AFF",
-        },
-        headerTintColor: "#fff",
-        headerTitleStyle: {
-          fontWeight: "bold",
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="stations"
-        options={{
-          title: "Stations",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "list" : "list-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="testing"
-        options={{
-          title: "Testing",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "flask" : "flask-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="leaderboard"
-        options={{
-          title: "Leaderboard",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "bar-chart" : "bar-chart-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="user-results"
-        options={{
-          title: "My Results",
-          tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? "people" : "people-outline"}
-              size={size}
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="benchmark"
-        options={{
-          title: "Benchmark",
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? "bar-chart" : "bar-chart-outline"}
-              size={28}
-              color={color}
-            />
-          ),
-        }}
-      />
-    </Tabs>
+    <SelectedUserProvider>
+      <BLEProvider>
+        <SafeAreaProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="ble-test" options={{ title: "BLE Test" }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="add-user" options={{ headerShown: false }} />
+            {/* REMOVED: <Stack.Screen name="user-results" options={{ headerShown: false }} /> */}
+          </Stack>
+        </SafeAreaProvider>
+      </BLEProvider>
+    </SelectedUserProvider>
   );
 }

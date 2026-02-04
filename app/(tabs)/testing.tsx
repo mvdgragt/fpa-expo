@@ -11,9 +11,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { BLEStatusBar } from "../../components/BLEStatusBar";
+import { useBLE } from "../../context/BLEContext";
 import { useSelectedUser } from "../../context/SelectedUserContext";
 
 export default function TestingScreen() {
+  const { isConnected } = useBLE();
   const params = useGlobalSearchParams();
   const { user } = useSelectedUser();
   const [time, setTime] = useState(0);
@@ -193,6 +196,14 @@ export default function TestingScreen() {
   if (!user || !stationId) {
     return (
       <View style={styles.container}>
+        <BLEStatusBar />
+        {!isConnected && (
+          <View style={styles.warningBox}>
+            <Text style={styles.warningText}>
+              ⚠️ Please connect to your sensor first
+            </Text>
+          </View>
+        )}
         <View style={styles.setupContainer}>
           <Ionicons name="timer-outline" size={80} color="#007AFF" />
           <Text style={styles.setupTitle}>Ready to Test?</Text>
@@ -400,6 +411,18 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: 20,
     alignItems: "center",
+  },
+  warningBox: {
+    backgroundColor: "#ff5555",
+    padding: 16,
+    margin: 20,
+    borderRadius: 12,
+  },
+  warningText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    textAlign: "center",
   },
   setupContainer: {
     flex: 1,

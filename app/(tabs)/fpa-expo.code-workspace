@@ -1,0 +1,14 @@
+{
+  "folders": [
+    {
+      "path": "../..",
+    },
+    {
+      "name": "esp32Receiver",
+      "path": "../../../Documents/PlatformIO/Projects/esp32Receiver",
+    },
+  ],
+  "settings": {
+    "java.configuration.updateBuildConfiguration": "disabled",
+  },
+}

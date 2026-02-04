@@ -59,7 +59,21 @@ export default function AddUserScreen() {
           returnKeyType="done"
           onSubmitEditing={handleAddUser}
         />
-
+        <TouchableOpacity
+          style={{
+            backgroundColor: "#007AFF",
+            padding: 16,
+            borderRadius: 12,
+            margin: 20,
+          }}
+          onPress={() => router.push("/ble-test")}
+        >
+          <Text
+            style={{ color: "#fff", textAlign: "center", fontWeight: "600" }}
+          >
+            BLE Test
+          </Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.addButton}
           onPress={handleAddUser}
