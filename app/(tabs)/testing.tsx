@@ -24,10 +24,11 @@ export default function TestingScreen() {
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
   const [buttonText, setButtonText] = useState("waiting");
+  const [isFinished, setIsFinished] = useState(false);
 
   const { stationId, stationName, stationShortName } = params;
-  const stopTimerTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTimeRef = useRef<number | null>(null);
+  const wasReady = useRef(false);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -42,6 +43,7 @@ export default function TestingScreen() {
 
   const handleStop = useCallback(async () => {
     setIsRunning(false);
+    setIsFinished(true);
     const finalTime = (time / 1000).toFixed(2);
 
     try {
@@ -60,25 +62,6 @@ export default function TestingScreen() {
       const results = savedResults ? JSON.parse(savedResults) : [];
       results.push(result);
       await AsyncStorage.setItem("testResults", JSON.stringify(results));
-
-      Alert.alert(
-        "Test Complete!",
-        `Time: ${finalTime}s\n\nResult saved successfully!`,
-        [
-          {
-            text: "New Test",
-            onPress: () => {
-              setTime(0);
-              setHasStarted(false);
-              startTimeRef.current = null;
-            },
-          },
-          {
-            text: "View Results",
-            onPress: () => router.push("/user-results"),
-          },
-        ],
-      );
     } catch (error) {
       console.error("Error saving result:", error);
       Alert.alert("Error", "Failed to save result");
@@ -100,47 +83,29 @@ export default function TestingScreen() {
       return;
     }
 
-    if (!hasStarted) {
+    if (!hasStarted && !isRunning) {
       // Timer not started yet
-      if (distance > 150) {
-        setButtonText("waiting");
-      } else {
+      if (distance <= 150) {
+        // Athlete is in position
+        wasReady.current = true;
         setButtonText("ready");
-      }
-    } else {
-      // Timer started
-      if (distance > 150) {
+      } else if (wasReady.current) {
+        // Was ready, now moved away → auto-start timer
+        wasReady.current = false;
+        handleStart();
         setButtonText("running");
-        if (!isRunning) {
-          handleStart();
-        }
-        if (stopTimerTimeout.current) {
-          clearTimeout(stopTimerTimeout.current);
-          stopTimerTimeout.current = null;
-        }
       } else {
-        // Distance < 150 while running, wait 3 seconds then stop
-        if (isRunning && !stopTimerTimeout.current) {
-          stopTimerTimeout.current = setTimeout(() => {
-            if (distance !== null && distance < 150 && isRunning) {
-              handleStop();
-              setButtonText("ready");
-            }
-            stopTimerTimeout.current = null;
-          }, 3000);
-        }
+        setButtonText("waiting");
+      }
+    } else if (isRunning) {
+      if (distance <= 150) {
+        // Athlete came back → auto-stop timer and show result
+        handleStop();
+      } else {
+        setButtonText("running");
       }
     }
   }, [distance, handleStart, handleStop, hasStarted, isRunning]);
-
-  // Clear timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (stopTimerTimeout.current) {
-        clearTimeout(stopTimerTimeout.current);
-      }
-    };
-  }, []);
 
   // Detect station change and trigger animation
   useEffect(() => {
@@ -193,11 +158,9 @@ export default function TestingScreen() {
     setIsRunning(false);
     setTime(0);
     setHasStarted(false);
+    setIsFinished(false);
     startTimeRef.current = null;
-    if (stopTimerTimeout.current) {
-      clearTimeout(stopTimerTimeout.current);
-      stopTimerTimeout.current = null;
-    }
+    wasReady.current = false;
   };
 
   const handleChangeUser = () => {
@@ -467,60 +430,82 @@ export default function TestingScreen() {
       </View>
 
       {/* Control Buttons */}
-      <View style={styles.buttonContainer}>
-        {!hasStarted ? (
+      {isFinished ? (
+        <View style={styles.finishedButtonsContainer}>
           <TouchableOpacity
-            style={[
-              styles.button,
-              styles.startButton,
-              buttonText !== "ready" && styles.startButtonDisabled,
-            ]}
-            onPress={handleStart}
+            style={[styles.button, styles.startButton, styles.finishedButton]}
+            onPress={() => router.push("/user-results")}
             activeOpacity={0.8}
-            disabled={buttonText !== "ready"}
           >
-            <Text style={styles.buttonText}>
-              {buttonText.charAt(0).toUpperCase() + buttonText.slice(1)}
-            </Text>
+            <Ionicons name="list" size={32} color="#fff" />
+            <Text style={styles.buttonText}>View Results</Text>
           </TouchableOpacity>
-        ) : (
-          <>
-            {isRunning ? (
-              <TouchableOpacity
-                style={[styles.button, styles.stopButton]}
-                onPress={handleStop}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="stop" size={32} color="#fff" />
-                <Text style={styles.buttonText}>Stop</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.button, styles.startButton]}
-                onPress={handleStart}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="play" size={32} color="#fff" />
-                <Text style={styles.buttonText}>Resume</Text>
-              </TouchableOpacity>
-            )}
 
+          <TouchableOpacity
+            style={[styles.button, styles.stopButton, styles.finishedButton]}
+            onPress={handleReset}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="refresh" size={32} color="#fff" />
+            <Text style={styles.buttonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.buttonContainer}>
+          {!hasStarted ? (
             <TouchableOpacity
               style={[
                 styles.button,
-                styles.resetButton,
-                isRunning && styles.resetButtonDisabled,
+                styles.startButton,
+                buttonText !== "ready" && styles.startButtonDisabled,
               ]}
-              onPress={handleReset}
-              activeOpacity={isRunning ? 1 : 0.8}
-              disabled={isRunning}
+              onPress={handleStart}
+              activeOpacity={0.8}
+              disabled={buttonText !== "ready"}
             >
-              <Ionicons name="refresh" size={32} color="#fff" />
-              <Text style={styles.buttonText}>Reset</Text>
+              <Text style={styles.buttonText}>
+                {buttonText.charAt(0).toUpperCase() + buttonText.slice(1)}
+              </Text>
             </TouchableOpacity>
-          </>
-        )}
-      </View>
+          ) : (
+            <>
+              {isRunning ? (
+                <TouchableOpacity
+                  style={[styles.button, styles.stopButton]}
+                  onPress={handleStop}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="stop" size={32} color="#fff" />
+                  <Text style={styles.buttonText}>Stop</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.button, styles.startButton]}
+                  onPress={handleStart}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="play" size={32} color="#fff" />
+                  <Text style={styles.buttonText}>Resume</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.button,
+                  styles.resetButton,
+                  isRunning && styles.resetButtonDisabled,
+                ]}
+                onPress={handleReset}
+                activeOpacity={isRunning ? 1 : 0.8}
+                disabled={isRunning}
+              >
+                <Ionicons name="refresh" size={32} color="#fff" />
+                <Text style={styles.buttonText}>Reset</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -768,6 +753,21 @@ const styles = StyleSheet.create({
     gap: 20,
     marginBottom: 40,
   },
+  finishedButtonsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+    marginHorizontal: 10,
+    marginBottom: 40,
+  },
+  finishedButton: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   button: {
     paddingVertical: 20,
     paddingHorizontal: 40,
@@ -805,5 +805,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
     marginTop: 8,
+    textAlign: "center",
   },
 });
