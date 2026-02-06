@@ -36,13 +36,22 @@ export const testStations = [
     description: "Measures short-distance acceleration from a static start.",
   },
   {
-    id: "run-home",
-    name: "Run Home",
-    shortName: "Run Home",
+    id: "5-0-5-test",
+    name: "5-0-5 Test",
+    shortName: "5-0-5",
     distanceMeters: 100,
     category: "speed",
     unit: "seconds",
-    description: "Measures short-distance acceleration from a static start.",
+    description: "Measures change of direction from a flying start.",
+  },
+  {
+    id: "skill-test",
+    name: "Skill Test",
+    shortName: "skill",
+    distanceMeters: 100,
+    category: "speed",
+    unit: "seconds",
+    description: "Measures a specific skill.",
   },
 ];
 

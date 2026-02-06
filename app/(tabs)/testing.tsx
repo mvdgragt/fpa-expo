@@ -145,10 +145,10 @@ export default function TestingScreen() {
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (isRunning) {
+    if (isRunning && startTimeRef.current !== null) {
       interval = setInterval(() => {
-        setTime((prevTime) => prevTime + 10);
-      }, 10);
+        setTime(Date.now() - startTimeRef.current!);
+      }, 16);
     }
     return () => clearInterval(interval);
   }, [isRunning]);
