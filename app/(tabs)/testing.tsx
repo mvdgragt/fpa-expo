@@ -2,7 +2,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useGlobalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -19,17 +19,128 @@ import { useSelectedUser } from "../../context/SelectedUserContext";
 export default function TestingScreen() {
   const params = useGlobalSearchParams();
   const { user } = useSelectedUser();
-  const { connectedDevice, isConnecting } = useBle(); // Use global BLE state
+  const { connectedDevice, isConnecting, distance } = useBle(); // Use global BLE state
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [buttonText, setButtonText] = useState("waiting");
 
   const { stationId, stationName, stationShortName } = params;
+  const stopTimerTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startTimeRef = useRef<number | null>(null);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const previousStationId = useRef(stationId);
+
+  const handleStart = useCallback(() => {
+    setIsRunning(true);
+    setHasStarted(true);
+    startTimeRef.current = Date.now();
+  }, []);
+
+  const handleStop = useCallback(async () => {
+    setIsRunning(false);
+    const finalTime = (time / 1000).toFixed(2);
+
+    try {
+      const result = {
+        userId: user?.id || "unknown",
+        userName: user?.name || "Unknown User",
+        userImage: user?.image || "",
+        stationId: stationId as string,
+        stationName: stationName as string,
+        stationShortName: stationShortName as string,
+        time: finalTime,
+        timestamp: new Date().toISOString(),
+      };
+
+      const savedResults = await AsyncStorage.getItem("testResults");
+      const results = savedResults ? JSON.parse(savedResults) : [];
+      results.push(result);
+      await AsyncStorage.setItem("testResults", JSON.stringify(results));
+
+      Alert.alert(
+        "Test Complete!",
+        `Time: ${finalTime}s\n\nResult saved successfully!`,
+        [
+          {
+            text: "New Test",
+            onPress: () => {
+              setTime(0);
+              setHasStarted(false);
+              startTimeRef.current = null;
+            },
+          },
+          {
+            text: "View Results",
+            onPress: () => router.push("/user-results"),
+          },
+        ],
+      );
+    } catch (error) {
+      console.error("Error saving result:", error);
+      Alert.alert("Error", "Failed to save result");
+    }
+  }, [
+    stationId,
+    stationName,
+    stationShortName,
+    time,
+    user?.id,
+    user?.image,
+    user?.name,
+  ]);
+
+  // Distance-based logic for button text and timer control
+  useEffect(() => {
+    if (distance === undefined || distance === null) {
+      setButtonText("waiting");
+      return;
+    }
+
+    if (!hasStarted) {
+      // Timer not started yet
+      if (distance > 150) {
+        setButtonText("waiting");
+      } else {
+        setButtonText("ready");
+      }
+    } else {
+      // Timer started
+      if (distance > 150) {
+        setButtonText("running");
+        if (!isRunning) {
+          handleStart();
+        }
+        if (stopTimerTimeout.current) {
+          clearTimeout(stopTimerTimeout.current);
+          stopTimerTimeout.current = null;
+        }
+      } else {
+        // Distance < 150 while running, wait 3 seconds then stop
+        if (isRunning && !stopTimerTimeout.current) {
+          stopTimerTimeout.current = setTimeout(() => {
+            if (distance !== null && distance < 150 && isRunning) {
+              handleStop();
+              setButtonText("ready");
+            }
+            stopTimerTimeout.current = null;
+          }, 3000);
+        }
+      }
+    }
+  }, [distance, handleStart, handleStop, hasStarted, isRunning]);
+
+  // Clear timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (stopTimerTimeout.current) {
+        clearTimeout(stopTimerTimeout.current);
+      }
+    };
+  }, []);
 
   // Detect station change and trigger animation
   useEffect(() => {
@@ -77,60 +188,16 @@ export default function TestingScreen() {
     return () => clearInterval(interval);
   }, [isRunning]);
 
-  const handleStart = () => {
-    setIsRunning(true);
-    setHasStarted(true);
-  };
-
-  const handleStop = async () => {
-    setIsRunning(false);
-    const finalTime = (time / 1000).toFixed(2);
-
-    try {
-      const result = {
-        userId: user?.id || "unknown",
-        userName: user?.name || "Unknown User",
-        userImage: user?.image || "",
-        stationId: stationId as string,
-        stationName: stationName as string,
-        stationShortName: stationShortName as string,
-        time: finalTime,
-        timestamp: new Date().toISOString(),
-      };
-
-      const savedResults = await AsyncStorage.getItem("testResults");
-      const results = savedResults ? JSON.parse(savedResults) : [];
-      results.push(result);
-      await AsyncStorage.setItem("testResults", JSON.stringify(results));
-
-      Alert.alert(
-        "Test Complete!",
-        `Time: ${finalTime}s\n\nResult saved successfully!`,
-        [
-          {
-            text: "New Test",
-            onPress: () => {
-              setTime(0);
-              setHasStarted(false);
-            },
-          },
-          {
-            text: "View Results",
-            onPress: () => router.push("/user-results"),
-          },
-        ],
-      );
-    } catch (error) {
-      console.error("Error saving result:", error);
-      Alert.alert("Error", "Failed to save result");
-    }
-  };
-
   const handleReset = () => {
     if (isRunning) return;
     setIsRunning(false);
     setTime(0);
     setHasStarted(false);
+    startTimeRef.current = null;
+    if (stopTimerTimeout.current) {
+      clearTimeout(stopTimerTimeout.current);
+      stopTimerTimeout.current = null;
+    }
   };
 
   const handleChangeUser = () => {
@@ -387,6 +454,13 @@ export default function TestingScreen() {
         </View>
       )}
 
+      {/* Distance Display */}
+      <View style={styles.distanceContainer}>
+        <Text style={styles.distanceText}>
+          Distance: {distance !== null ? distance.toFixed(1) : "--"} cm
+        </Text>
+      </View>
+
       {/* Timer Display */}
       <View style={styles.timerContainer}>
         <Text style={styles.timerText}>{formatTime(time)}</Text>
@@ -396,12 +470,18 @@ export default function TestingScreen() {
       <View style={styles.buttonContainer}>
         {!hasStarted ? (
           <TouchableOpacity
-            style={[styles.button, styles.startButton]}
+            style={[
+              styles.button,
+              styles.startButton,
+              buttonText !== "ready" && styles.startButtonDisabled,
+            ]}
             onPress={handleStart}
             activeOpacity={0.8}
+            disabled={buttonText !== "ready"}
           >
-            <Ionicons name="play" size={32} color="#fff" />
-            <Text style={styles.buttonText}>Start</Text>
+            <Text style={styles.buttonText}>
+              {buttonText.charAt(0).toUpperCase() + buttonText.slice(1)}
+            </Text>
           </TouchableOpacity>
         ) : (
           <>
@@ -646,6 +726,21 @@ const styles = StyleSheet.create({
   changeButtonTextDisabled: {
     color: "#999",
   },
+  distanceContainer: {
+    position: "absolute",
+    top: 10,
+    right: 20,
+    backgroundColor: "#eee",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    zIndex: 1000,
+  },
+  distanceText: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "600",
+  },
   timerContainer: {
     backgroundColor: "#fff",
     borderRadius: 20,
@@ -691,6 +786,9 @@ const styles = StyleSheet.create({
   },
   startButton: {
     backgroundColor: "#4CAF50",
+  },
+  startButtonDisabled: {
+    backgroundColor: "#ccc",
   },
   stopButton: {
     backgroundColor: "#F44336",

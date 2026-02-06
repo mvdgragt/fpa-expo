@@ -18,13 +18,22 @@ export default function RootLayout() {
 
   return (
     <BleProvider>
-      {" "}
       {/* Moved BleProvider to outermost wrapper */}
       <SelectedUserProvider>
         <SafeAreaProvider>
           <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="add-user" options={{ headerShown: false }} />
+            {[
+              <Stack.Screen
+                key="tabs"
+                name="(tabs)"
+                options={{ headerShown: false }}
+              />,
+              <Stack.Screen
+                key="add-user"
+                name="add-user"
+                options={{ headerShown: false }}
+              />,
+            ]}
           </Stack>
         </SafeAreaProvider>
       </SelectedUserProvider>

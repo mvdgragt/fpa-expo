@@ -22,7 +22,9 @@
         "tinted": "./assets/icons/ios-tinted.png"
       },
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to your FPA timing gate.",
+        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to communicate with the ESP32 sensor."
       }
     },
     "android": {

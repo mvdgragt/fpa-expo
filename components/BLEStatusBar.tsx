@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { StyleSheet, Text, TouchableOpacity } from "react-native";
-import { useBLE } from "../context/BLEContext";
+import { useBle } from "../context/BLEContext";
 
 export function BLEStatusBar() {
-  const { isConnected, deviceName } = useBLE();
+  const { connectedDevice } = useBle();
+  const isConnected = !!connectedDevice;
+  const deviceName = connectedDevice?.name ?? "";
 
   return (
     <TouchableOpacity
@@ -12,7 +14,7 @@ export function BLEStatusBar() {
         styles.container,
         isConnected ? styles.connected : styles.disconnected,
       ]}
-      onPress={() => router.push("/ble-test")}
+      onPress={() => router.push("/(tabs)/testing")}
     >
       <Ionicons
         name={isConnected ? "bluetooth" : "bluetooth-outline"}
