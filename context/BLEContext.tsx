@@ -17,6 +17,8 @@ interface BleContextType {
   connectedDevice: Device | null;
   isConnecting: boolean;
   distance: number | null;
+  hubDistance: number | null;
+  remoteDistance: number | null;
   connectToESP32: () => Promise<void>;
 }
 
@@ -34,17 +36,30 @@ export const BleProvider: React.FC<{ children: React.ReactNode }> = ({
   const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [distance, setDistance] = useState<number | null>(null);
+  const [hubDistance, setHubDistance] = useState<number | null>(null);
+  const [remoteDistance, setRemoteDistance] = useState<number | null>(null);
   const lastDistanceUpdate = useRef<number>(0);
   const lastDistanceValue = useRef<number | null>(null);
 
   // Parse distance from BLE notification
+  // Supports formats:
+  //   Legacy: "D:123.45 S:67.89" or "ID:2,Dist:123.45,Str:67.89,ReadID:123"
+  //   Flying twenty: "H:123.45,R:456.78" (H=hub/start gate, R=remote/stop gate)
   const parseDistance = useCallback((data: string) => {
-    // Expected format: "D:123.45 S:67.89" or "ID:2,Dist:123.45,Str:67.89,ReadID:123"
     const distMatch = data.match(/(?:D:|Dist:)(\d+\.?\d*)/);
     if (distMatch && distMatch[1]) {
       return parseFloat(distMatch[1]);
     }
     return null;
+  }, []);
+
+  const parseGateDistances = useCallback((data: string) => {
+    const hubMatch = data.match(/H:(\d+\.?\d*)/);
+    const remMatch = data.match(/R:(\d+\.?\d*)/);
+    return {
+      hub: hubMatch ? parseFloat(hubMatch[1]) : null,
+      remote: remMatch ? parseFloat(remMatch[1]) : null,
+    };
   }, []);
 
   const connectToESP32 = useCallback(async () => {
@@ -56,6 +71,8 @@ export const BleProvider: React.FC<{ children: React.ReactNode }> = ({
 
     setIsConnecting(true);
     setDistance(null);
+    setHubDistance(null);
+    setRemoteDistance(null);
 
     try {
       // Check if already connected
@@ -104,18 +121,31 @@ export const BleProvider: React.FC<{ children: React.ReactNode }> = ({
                       "base64",
                     ).toString("utf-8");
                     console.log("Received BLE data:", data);
-                    const parsedDistance = parseDistance(data);
-                    if (parsedDistance !== null) {
-                      const now = Date.now();
-                      const valueChanged =
-                        parsedDistance !== lastDistanceValue.current;
-                      if (
-                        valueChanged ||
-                        now - lastDistanceUpdate.current > 50
-                      ) {
-                        lastDistanceValue.current = parsedDistance;
-                        lastDistanceUpdate.current = now;
-                        setDistance(parsedDistance);
+
+                    // Try flying-twenty format first: "H:xxx,R:xxx"
+                    const gateData = parseGateDistances(data);
+                    if (gateData.hub !== null || gateData.remote !== null) {
+                      if (gateData.hub !== null) setHubDistance(gateData.hub);
+                      if (gateData.remote !== null)
+                        setRemoteDistance(gateData.remote);
+                      // Also set legacy distance to hub value for backward compat
+                      if (gateData.hub !== null) setDistance(gateData.hub);
+                    } else {
+                      // Fallback: legacy single-distance format
+                      const parsedDistance = parseDistance(data);
+                      if (parsedDistance !== null) {
+                        const now = Date.now();
+                        const valueChanged =
+                          parsedDistance !== lastDistanceValue.current;
+                        if (
+                          valueChanged ||
+                          now - lastDistanceUpdate.current > 50
+                        ) {
+                          lastDistanceValue.current = parsedDistance;
+                          lastDistanceUpdate.current = now;
+                          setDistance(parsedDistance);
+                          setHubDistance(parsedDistance);
+                        }
                       }
                     }
                   } catch (e) {
@@ -129,6 +159,8 @@ export const BleProvider: React.FC<{ children: React.ReactNode }> = ({
             connected.onDisconnected(() => {
               setConnectedDevice(null);
               setDistance(null);
+              setHubDistance(null);
+              setRemoteDistance(null);
             });
 
             console.log("[BLE] Connected and monitoring!");
@@ -151,7 +183,7 @@ export const BleProvider: React.FC<{ children: React.ReactNode }> = ({
       console.error("BLE Connection Error:", e);
       setIsConnecting(false);
     }
-  }, [connectedDevice, isConnecting, parseDistance]);
+  }, [connectedDevice, isConnecting, parseDistance, parseGateDistances]);
 
   useEffect(() => {
     const subscription = bleManager.onStateChange((state) => {
@@ -163,7 +195,14 @@ export const BleProvider: React.FC<{ children: React.ReactNode }> = ({
 
   return (
     <BleContext.Provider
-      value={{ connectedDevice, isConnecting, distance, connectToESP32 }}
+      value={{
+        connectedDevice,
+        isConnecting,
+        distance,
+        hubDistance,
+        remoteDistance,
+        connectToESP32,
+      }}
     >
       {children}
     </BleContext.Provider>

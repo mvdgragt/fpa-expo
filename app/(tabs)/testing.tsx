@@ -19,7 +19,13 @@ import { useSelectedUser } from "../../context/SelectedUserContext";
 export default function TestingScreen() {
   const params = useGlobalSearchParams();
   const { user } = useSelectedUser();
-  const { connectedDevice, isConnecting, distance } = useBle(); // Use global BLE state
+  const {
+    connectedDevice,
+    isConnecting,
+    distance,
+    hubDistance,
+    remoteDistance,
+  } = useBle(); // Use global BLE state
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
@@ -29,6 +35,7 @@ export default function TestingScreen() {
   const { stationId, stationName, stationShortName } = params;
   const startTimeRef = useRef<number | null>(null);
   const wasReady = useRef(false);
+  const stopGateReady = useRef(false); // true once remote sensor sees > 150 (no one there)
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -76,17 +83,19 @@ export default function TestingScreen() {
     user?.name,
   ]);
 
-  // Distance-based logic for button text and timer control
+  const isFlyingTwenty = stationId === "flying-20";
+
+  // START gate logic — hub sensor detects athlete
   useEffect(() => {
-    if (distance === undefined || distance === null) {
-      setButtonText("waiting");
+    const d = hubDistance ?? distance;
+    if (d === undefined || d === null) {
+      if (!hasStarted) setButtonText("waiting");
       return;
     }
 
     if (!hasStarted && !isRunning) {
-      // Timer not started yet
-      if (distance <= 150) {
-        // Athlete is in position
+      if (d <= 150) {
+        // Athlete is in position at start gate
         wasReady.current = true;
         setButtonText("ready");
       } else if (wasReady.current) {
@@ -97,15 +106,38 @@ export default function TestingScreen() {
       } else {
         setButtonText("waiting");
       }
-    } else if (isRunning) {
-      if (distance <= 150) {
-        // Athlete came back → auto-stop timer and show result
+    } else if (isRunning && !isFlyingTwenty) {
+      // For non-flying-twenty stations, hub is also the stop gate
+      if (d <= 150) {
         handleStop();
-      } else {
-        setButtonText("running");
       }
     }
-  }, [distance, handleStart, handleStop, hasStarted, isRunning]);
+  }, [
+    hubDistance,
+    distance,
+    handleStart,
+    handleStop,
+    hasStarted,
+    isRunning,
+    isFlyingTwenty,
+  ]);
+
+  // STOP gate logic — remote sensor (second ESP32), ONLY for flying twenty
+  // Requires a state transition: sensor must see > 150 (clear) first,
+  // then ≤ 150 (athlete passing) to trigger stop.
+  // remoteDistance of 0 is ignored (sensor error / no data from ESP-NOW yet).
+  useEffect(() => {
+    if (!isFlyingTwenty) return;
+    if (!isRunning || remoteDistance === null || remoteDistance === 0) return;
+
+    if (remoteDistance > 150) {
+      // Stop gate is clear — arm it
+      stopGateReady.current = true;
+    } else if (stopGateReady.current && remoteDistance <= 150) {
+      // Athlete passed stop gate → auto-stop timer
+      handleStop();
+    }
+  }, [remoteDistance, handleStop, isRunning, isFlyingTwenty]);
 
   // Detect station change and trigger animation
   useEffect(() => {
@@ -161,6 +193,7 @@ export default function TestingScreen() {
     setIsFinished(false);
     startTimeRef.current = null;
     wasReady.current = false;
+    stopGateReady.current = false;
   };
 
   const handleChangeUser = () => {
@@ -420,7 +453,16 @@ export default function TestingScreen() {
       {/* Distance Display */}
       <View style={styles.distanceContainer}>
         <Text style={styles.distanceText}>
-          Distance: {distance !== null ? distance.toFixed(1) : "--"} cm
+          Start:{" "}
+          {hubDistance !== null
+            ? hubDistance.toFixed(1)
+            : distance !== null
+              ? distance.toFixed(1)
+              : "--"}{" "}
+          cm
+        </Text>
+        <Text style={styles.distanceText}>
+          Stop: {remoteDistance !== null ? remoteDistance.toFixed(1) : "--"} cm
         </Text>
       </View>
 
@@ -720,6 +762,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 10,
     zIndex: 1000,
+    flexDirection: "row",
+    gap: 12,
   },
   distanceText: {
     fontSize: 14,
