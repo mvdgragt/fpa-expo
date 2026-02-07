@@ -22,18 +22,14 @@ export default function RootLayout() {
       <SelectedUserProvider>
         <SafeAreaProvider>
           <Stack screenOptions={{ headerShown: false }}>
-            {[
-              <Stack.Screen
-                key="tabs"
-                name="(tabs)"
-                options={{ headerShown: false }}
-              />,
-              <Stack.Screen
-                key="add-user"
-                name="add-user"
-                options={{ headerShown: false }}
-              />,
-            ]}
+            <Stack.Screen name="index" />
+            <Stack.Screen name="login" />
+            <Stack.Screen name="admin-login" />
+            <Stack.Screen name="admin" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="select-user" />
+            <Stack.Screen name="add-user" />
+            <Stack.Screen name="user-profile" />
           </Stack>
         </SafeAreaProvider>
       </SelectedUserProvider>

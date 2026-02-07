@@ -1,7 +1,7 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { getClubSession } from "../lib/session";
 
 export default function Index() {
   // Removed unused isChecking state
@@ -12,13 +12,11 @@ export default function Index() {
 
   const checkLoginStatus = async () => {
     try {
-      const session = await AsyncStorage.getItem("userSession");
+      const clubSession = await getClubSession();
 
-      if (session) {
-        // User is logged in, go to tabs
-        router.replace("/(tabs)/stations");
+      if (clubSession) {
+        router.replace("/select-user");
       } else {
-        // User is not logged in, go to login
         router.replace("/login");
       }
     } catch (error) {

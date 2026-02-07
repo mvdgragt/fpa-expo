@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import { router, useGlobalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -11,163 +11,78 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSelectedUser } from "../context/SelectedUserContext";
+import { clearClubSession, getClubSession } from "../lib/session";
+import { supabase } from "../lib/supabase";
 
 type UserType = {
   id: string;
   name: string;
   image: string;
-  clubId?: string;
 };
-
-const STORAGE_KEY = "@users_list";
-
-// Updated INITIAL_USERS with clubId
-const INITIAL_USERS: UserType[] = [
-  {
-    id: "1",
-    name: "Alex Johnson",
-    image: "https://randomuser.me/api/portraits/men/1.jpg",
-    clubId: "club1",
-  },
-  {
-    id: "2",
-    name: "Sophia Martinez",
-    image: "https://randomuser.me/api/portraits/women/2.jpg",
-    clubId: "club1",
-  },
-  {
-    id: "3",
-    name: "Michael Brown",
-    image: "https://randomuser.me/api/portraits/men/3.jpg",
-    clubId: "club1",
-  },
-  {
-    id: "4",
-    name: "Emma Wilson",
-    image: "https://randomuser.me/api/portraits/women/4.jpg",
-    clubId: "club2",
-  },
-  {
-    id: "5",
-    name: "Daniel Lee",
-    image: "https://randomuser.me/api/portraits/men/5.jpg",
-    clubId: "club2",
-  },
-  {
-    id: "6",
-    name: "Olivia Taylor",
-    image: "https://randomuser.me/api/portraits/women/6.jpg",
-    clubId: "club2",
-  },
-  {
-    id: "7",
-    name: "James Anderson",
-    image: "https://randomuser.me/api/portraits/men/7.jpg",
-    clubId: "club1",
-  },
-  {
-    id: "8",
-    name: "Isabella Thomas",
-    image: "https://randomuser.me/api/portraits/women/8.jpg",
-    clubId: "club1",
-  },
-  {
-    id: "9",
-    name: "William Moore",
-    image: "https://randomuser.me/api/portraits/men/9.jpg",
-    clubId: "club2",
-  },
-  {
-    id: "10",
-    name: "Mia Jackson",
-    image: "https://randomuser.me/api/portraits/women/10.jpg",
-    clubId: "club2",
-  },
-  {
-    id: "11",
-    name: "Benjamin Harris",
-    image: "https://randomuser.me/api/portraits/men/11.jpg",
-    clubId: "club1",
-  },
-  {
-    id: "12",
-    name: "Charlotte Clark",
-    image: "https://randomuser.me/api/portraits/women/12.jpg",
-    clubId: "club1",
-  },
-  {
-    id: "13",
-    name: "Lucas Lewis",
-    image: "https://randomuser.me/api/portraits/men/13.jpg",
-    clubId: "club2",
-  },
-  {
-    id: "14",
-    name: "Amelia Walker",
-    image: "https://randomuser.me/api/portraits/women/14.jpg",
-    clubId: "club2",
-  },
-  {
-    id: "15",
-    name: "Henry Young",
-    image: "https://randomuser.me/api/portraits/men/15.jpg",
-    clubId: "club1",
-  },
-];
 
 export default function SelectUserScreen() {
   const params = useGlobalSearchParams();
   const [users, setUsers] = useState<UserType[]>([]);
-  const [allUsers, setAllUsers] = useState<UserType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [userClubId, setUserClubId] = useState<string | null>(null);
   const [clubName, setClubName] = useState<string>("");
+  const [clubLogoUrl, setClubLogoUrl] = useState<string | null>(null);
   const { stationId, stationName, stationShortName } = params;
   const { setUser } = useSelectedUser();
+  const insets = useSafeAreaInsets();
+
+  const handleLogout = async () => {
+    await clearClubSession();
+    router.replace("/login");
+  };
 
   // Load users from storage on mount
   useEffect(() => {
     loadUsers();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadUsers();
+    }, []),
+  );
+
   const loadUsers = async () => {
+    setIsLoading(true);
     try {
-      // Get logged-in user's session
-      const sessionData = await AsyncStorage.getItem("userSession");
-      if (!sessionData) {
-        Alert.alert("Error", "No active session. Please login again.");
+      const session = await getClubSession();
+      if (!session) {
+        Alert.alert("Error", "No active club session. Please login again.");
         router.replace("/login");
         return;
       }
 
-      const session = JSON.parse(sessionData);
-      const clubId = session.clubId;
-      setUserClubId(clubId);
       setClubName(session.clubName || "");
+      if (session.clubLogoPath) {
+        const { data } = supabase.storage
+          .from("club-logos")
+          .getPublicUrl(session.clubLogoPath);
+        setClubLogoUrl(data.publicUrl || null);
+      } else {
+        setClubLogoUrl(null);
+      }
+      const { data, error } = await supabase.rpc("list_club_users", {
+        club_code: session.clubCode,
+      });
 
-      // Load stored users
-      const storedUsers = await AsyncStorage.getItem(STORAGE_KEY);
-      let allUsersList: UserType[] = [...INITIAL_USERS];
-
-      if (storedUsers) {
-        const parsed = JSON.parse(storedUsers);
-        // Merge stored users with initial users, removing duplicates
-        allUsersList = [...parsed, ...INITIAL_USERS];
-        const uniqueUsers = allUsersList.filter(
-          (user, index, self) =>
-            index === self.findIndex((u) => u.id === user.id),
-        );
-        allUsersList = uniqueUsers;
+      if (error) {
+        console.error("Error loading users:", error);
+        setUsers([]);
+        return;
       }
 
-      setAllUsers(allUsersList);
-
-      // Filter users by club
-      const filteredUsers = allUsersList.filter(
-        (user) => user.clubId === clubId,
-      );
-      setUsers(filteredUsers);
+      const mapped: UserType[] = (data || []).map((u: any) => ({
+        id: u.id,
+        name: `${u.first_name} ${u.last_name}`,
+        image: u.image_url,
+      }));
+      setUsers(mapped);
     } catch (error) {
       console.error("Error loading users:", error);
       setUsers([]);
@@ -198,52 +113,6 @@ export default function SelectUserScreen() {
     [setUser, stationId, stationName, stationShortName],
   );
 
-  const addNewUser = useCallback(
-    async (newUser: UserType) => {
-      try {
-        // Add clubId to new user
-        const userWithClub = { ...newUser, clubId: userClubId || undefined };
-
-        // Check if user already exists
-        const exists = allUsers.some((u) => u.id === userWithClub.id);
-        if (exists) {
-          return;
-        }
-
-        const updatedAllUsers = [userWithClub, ...allUsers];
-        setAllUsers(updatedAllUsers);
-
-        // Only save the NEW users (not the initial ones) to AsyncStorage
-        const newUsersOnly = updatedAllUsers.filter(
-          (user) => !INITIAL_USERS.some((initial) => initial.id === user.id),
-        );
-
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newUsersOnly));
-
-        // Update filtered users list
-        const filteredUsers = updatedAllUsers.filter(
-          (user) => user.clubId === userClubId,
-        );
-        setUsers(filteredUsers);
-      } catch (error) {
-        console.error("Error saving user:", error);
-      }
-    },
-    [allUsers, userClubId],
-  );
-
-  // Handle new user addition
-  useEffect(() => {
-    if (params.newUser && !isLoading) {
-      try {
-        const newUser = JSON.parse(params.newUser as string);
-        addNewUser(newUser);
-      } catch (error) {
-        console.error("Error parsing new user:", error);
-      }
-    }
-  }, [params.newUser, isLoading, addNewUser]);
-
   const handleAddUser = () => {
     router.push({
       pathname: "/add-user",
@@ -272,10 +141,26 @@ export default function SelectUserScreen() {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity
+        style={[styles.logoutButton, { top: insets.top + 8 }]}
+        onPress={handleLogout}
+        activeOpacity={0.8}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Ionicons name="log-out-outline" size={18} color="#666" />
+        <Text style={styles.logoutButtonText}>Switch club</Text>
+      </TouchableOpacity>
+
       {clubName && (
         <View style={styles.clubBadge}>
           <Ionicons name="business" size={16} color="#fff" />
           <Text style={styles.clubBadgeText}>{clubName}</Text>
+        </View>
+      )}
+
+      {clubLogoUrl && (
+        <View style={styles.clubLogoWrap}>
+          <Image source={{ uri: clubLogoUrl }} style={styles.clubLogo} />
         </View>
       )}
 
@@ -333,6 +218,26 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: 16,
   },
+  logoutButton: {
+    position: "absolute",
+    top: 18,
+    right: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    zIndex: 10,
+  },
+  logoutButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#666",
+  },
   loadingText: {
     fontSize: 16,
     color: "#666",
@@ -354,6 +259,21 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
     fontWeight: "600",
+  },
+  clubLogoWrap: {
+    alignSelf: "center",
+    marginBottom: 12,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  clubLogo: {
+    width: 86,
+    height: 86,
+    resizeMode: "contain",
+    borderRadius: 12,
   },
   stationBadge: {
     backgroundColor: "#007AFF",

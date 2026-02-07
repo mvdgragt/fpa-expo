@@ -24,7 +24,9 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to connect to your FPA timing gate.",
-        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to communicate with the ESP32 sensor."
+        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to communicate with the ESP32 sensor.",
+        "NSCameraUsageDescription": "This app uses the camera to take a profile picture.",
+        "NSPhotoLibraryUsageDescription": "This app accesses your photo library to choose a profile picture."
       }
     },
     "android": {
@@ -52,7 +54,14 @@
           "imageWidth": 200
         }
       ],
-      "react-native-ble-plx"
+      "react-native-ble-plx",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This app accesses your photos to let you choose a profile picture.",
+          "cameraPermission": "This app uses the camera to take a profile picture."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
@@ -15,122 +14,52 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-// Mock database - Replace with your actual backend API
-const CLUBS_DATABASE: Record<string, { clubId: string; clubName: string }> = {
-  "john@example.com": { clubId: "club1", clubName: "Elite Fitness Club" },
-  "sarah@example.com": { clubId: "club2", clubName: "Power Gym" },
-  "mike@example.com": { clubId: "club1", clubName: "Elite Fitness Club" },
-};
+import { setClubSession } from "../lib/session";
+import { supabase } from "../lib/supabase";
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState<"email" | "code">("email");
-  const [clubInfo, setClubInfo] = useState<{
-    clubId: string;
-    clubName: string;
-  } | null>(null);
+  const [clubCode, setClubCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [generatedCode, setGeneratedCode] = useState<string>("");
-
-  const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const handleEmailSubmit = async () => {
-    if (!email.trim()) {
-      Alert.alert("Error", "Please enter your email address");
+  const handleClubCodeLogin = async () => {
+    const trimmed = clubCode.trim();
+    if (!trimmed) {
+      Alert.alert("Error", "Enter your 4-digit club code");
       return;
     }
-
-    if (!validateEmail(email)) {
-      Alert.alert("Error", "Please enter a valid email address");
+    if (!/^\d{4}$/.test(trimmed)) {
+      Alert.alert("Error", "Club code must be 4 digits");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // Simulate API call to check email and get club info
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const { data, error } = await supabase.rpc("club_login", {
+        club_code: trimmed,
+      });
 
-      const club = CLUBS_DATABASE[email.toLowerCase()];
-
-      if (!club) {
-        Alert.alert(
-          "Email Not Found",
-          "This email is not associated with any club. Please contact your club administrator.",
-        );
-        setIsLoading(false);
+      const row = Array.isArray(data) ? data[0] : data;
+      if (error || !row) {
+        Alert.alert("Login failed", "Invalid club code");
         return;
       }
 
-      // Generate a random 6-digit code
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedCode(code);
+      await setClubSession({
+        type: "club",
+        clubCode: trimmed,
+        clubId: row.club_id,
+        clubName: row.club_name,
+        clubLogoPath: row.club_logo_path || undefined,
+        loginTime: new Date().toISOString(),
+      });
 
-      // In production, send this code via SMS/Email through your backend
-      console.log(`Login code for ${email}: ${code}`);
-
-      setClubInfo(club);
-      setStep("code");
-
-      // For demo purposes, show the code in an alert
-      Alert.alert(
-        "Code Sent!",
-        `A login code has been sent to your phone.\n\n(Demo code: ${code})`,
-        [{ text: "OK" }],
-      );
-    } catch (error) {
-      console.error("Error:", error);
-      Alert.alert("Error", "Something went wrong. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCodeSubmit = async () => {
-    if (!code.trim()) {
-      Alert.alert("Error", "Please enter the verification code");
-      return;
-    }
-
-    if (code !== generatedCode) {
-      Alert.alert("Error", "Invalid verification code. Please try again.");
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      // Save login session
-      await AsyncStorage.setItem(
-        "userSession",
-        JSON.stringify({
-          email,
-          clubId: clubInfo?.clubId,
-          clubName: clubInfo?.clubName,
-          loginTime: new Date().toISOString(),
-        }),
-      );
-
-      // Navigate to select-user screen
       router.replace("/select-user");
     } catch (error) {
-      console.error("Error saving session:", error);
+      console.error("Error logging in:", error);
       Alert.alert("Error", "Failed to login. Please try again.");
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleBackToEmail = () => {
-    setStep("email");
-    setCode("");
-    setClubInfo(null);
-    setGeneratedCode("");
   };
 
   return (
@@ -152,123 +81,54 @@ export default function LoginScreen() {
               />
               <Text style={styles.title}>Future Pro Athletes</Text>
               <Text style={styles.subtitle}>
-                {step === "email"
-                  ? "Enter your email to get started"
-                  : "Enter verification code"}
+                Enter your club code to continue
               </Text>
             </View>
 
-            {step === "email" ? (
-              // Email Step
-              <View style={styles.form}>
-                <View style={styles.inputContainer}>
-                  <Ionicons
-                    name="mail-outline"
-                    size={24}
-                    color="#666"
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Email address"
-                    placeholderTextColor="#999"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!isLoading}
-                  />
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.button, isLoading && styles.buttonDisabled]}
-                  onPress={handleEmailSubmit}
-                  disabled={isLoading}
-                  activeOpacity={0.8}
-                >
-                  {isLoading ? (
-                    <Text style={styles.buttonText}>Checking...</Text>
-                  ) : (
-                    <>
-                      <Text style={styles.buttonText}>Continue</Text>
-                      <Ionicons name="arrow-forward" size={20} color="#fff" />
-                    </>
-                  )}
-                </TouchableOpacity>
+            <View style={styles.form}>
+              <View style={styles.inputContainer}>
+                <Ionicons
+                  name="keypad-outline"
+                  size={24}
+                  color="#666"
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="4-digit club code"
+                  placeholderTextColor="#999"
+                  value={clubCode}
+                  onChangeText={(t) => setClubCode(t.replace(/\D/g, ""))}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  editable={!isLoading}
+                />
               </View>
-            ) : (
-              // Code Step
-              <View style={styles.form}>
-                {/* Club Info */}
-                {clubInfo && (
-                  <View style={styles.clubInfoCard}>
-                    <Ionicons name="business" size={32} color="#007AFF" />
-                    <Text style={styles.clubInfoTitle}>Your Club</Text>
-                    <Text style={styles.clubInfoName}>{clubInfo.clubName}</Text>
-                  </View>
+
+              <TouchableOpacity
+                style={[styles.button, isLoading && styles.buttonDisabled]}
+                onPress={handleClubCodeLogin}
+                disabled={isLoading}
+                activeOpacity={0.8}
+              >
+                {isLoading ? (
+                  <Text style={styles.buttonText}>Logging in...</Text>
+                ) : (
+                  <>
+                    <Text style={styles.buttonText}>Continue</Text>
+                    <Ionicons name="arrow-forward" size={20} color="#fff" />
+                  </>
                 )}
+              </TouchableOpacity>
 
-                <View style={styles.inputContainer}>
-                  <Ionicons
-                    name="lock-closed-outline"
-                    size={24}
-                    color="#666"
-                    style={styles.inputIcon}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="6-digit code"
-                    placeholderTextColor="#999"
-                    value={code}
-                    onChangeText={setCode}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    editable={!isLoading}
-                  />
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.button, isLoading && styles.buttonDisabled]}
-                  onPress={handleCodeSubmit}
-                  disabled={isLoading}
-                  activeOpacity={0.8}
-                >
-                  {isLoading ? (
-                    <Text style={styles.buttonText}>Verifying...</Text>
-                  ) : (
-                    <>
-                      <Text style={styles.buttonText}>Login</Text>
-                      <Ionicons name="checkmark" size={20} color="#fff" />
-                    </>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.backButton}
-                  onPress={handleBackToEmail}
-                  disabled={isLoading}
-                >
-                  <Ionicons name="arrow-back" size={20} color="#007AFF" />
-                  <Text style={styles.backButtonText}>Back to email</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.resendButton}
-                  onPress={handleEmailSubmit}
-                  disabled={isLoading}
-                >
-                  <Text style={styles.resendButtonText}>Resend code</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Demo Info */}
-            <View style={styles.demoInfo}>
-              <Text style={styles.demoInfoTitle}>Demo Accounts:</Text>
-              <Text style={styles.demoInfoText}>john@example.com</Text>
-              <Text style={styles.demoInfoText}>sarah@example.com</Text>
-              <Text style={styles.demoInfoText}>mike@example.com</Text>
+              <TouchableOpacity
+                style={styles.adminLink}
+                onPress={() => router.push("/admin-login" as any)}
+                disabled={isLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.adminLinkText}>Admin</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -375,67 +235,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
   },
-  clubInfoCard: {
-    backgroundColor: "#E3F2FD",
-    borderRadius: 16,
-    padding: 24,
+  adminLink: {
     alignItems: "center",
-    marginBottom: 24,
-    borderWidth: 2,
-    borderColor: "#007AFF",
+    marginTop: 18,
+    paddingVertical: 8,
   },
-  clubInfoTitle: {
-    fontSize: 14,
-    color: "#666",
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  clubInfoName: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#007AFF",
-    textAlign: "center",
-  },
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 16,
-    paddingVertical: 12,
-  },
-  backButtonText: {
-    color: "#007AFF",
-    fontSize: 16,
+  adminLinkText: {
+    color: "#94a3b8",
+    fontSize: 13,
     fontWeight: "600",
-  },
-  resendButton: {
-    alignItems: "center",
-    marginTop: 8,
-    paddingVertical: 12,
-  },
-  resendButtonText: {
-    color: "#666",
-    fontSize: 14,
-    textDecorationLine: "underline",
-  },
-  demoInfo: {
-    marginTop: 40,
-    padding: 16,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-  },
-  demoInfoTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#666",
-    marginBottom: 8,
-  },
-  demoInfoText: {
-    fontSize: 14,
-    color: "#007AFF",
-    marginBottom: 4,
   },
 });
