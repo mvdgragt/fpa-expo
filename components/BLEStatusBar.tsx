@@ -4,7 +4,7 @@ import { StyleSheet, Text, TouchableOpacity } from "react-native";
 import { useBle } from "../context/BLEContext";
 
 export function BLEStatusBar() {
-  const { connectedDevice } = useBle();
+  const { connectedDevice, connectToESP32, isConnecting } = useBle();
   const isConnected = !!connectedDevice;
   const deviceName = connectedDevice?.name ?? "";
 
@@ -14,7 +14,13 @@ export function BLEStatusBar() {
         styles.container,
         isConnected ? styles.connected : styles.disconnected,
       ]}
-      onPress={() => router.push("/(tabs)/testing")}
+      onPress={() => {
+        if (isConnected) {
+          router.push("/(tabs)/testing");
+        } else {
+          connectToESP32();
+        }
+      }}
     >
       <Ionicons
         name={isConnected ? "bluetooth" : "bluetooth-outline"}
@@ -24,7 +30,9 @@ export function BLEStatusBar() {
       <Text style={styles.text}>
         {isConnected
           ? `Connected: ${deviceName}`
-          : "Not Connected - Tap to Connect"}
+          : isConnecting
+            ? "Connecting..."
+            : "Not Connected - Tap to Connect"}
       </Text>
       {!isConnected && <Ionicons name="warning" size={20} color="#fff" />}
     </TouchableOpacity>

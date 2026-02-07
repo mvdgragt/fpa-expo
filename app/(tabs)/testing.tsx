@@ -199,7 +199,7 @@ export default function TestingScreen() {
   const handleChangeUser = () => {
     if (isRunning) return;
     router.push({
-      pathname: "/select-user",
+      pathname: "/(tabs)/select-user" as any,
       params: {
         stationId,
         stationName,
@@ -230,8 +230,12 @@ export default function TestingScreen() {
       );
       return;
     }
+    if (isRunning) {
+      Alert.alert("Cannot change user", "Stop the current session first");
+      return;
+    }
     router.push({
-      pathname: "/select-user",
+      pathname: "/(tabs)/select-user" as any,
       params: {
         stationId,
         stationName,

@@ -189,6 +189,18 @@ export default function AddUserScreen() {
       Alert.alert("Error", "Please enter a last name");
       return;
     }
+    if (!dob) {
+      Alert.alert("Error", "Please select a date of birth");
+      return;
+    }
+    if (!sex) {
+      Alert.alert("Error", "Please select a sex");
+      return;
+    }
+    if (!imageUri) {
+      Alert.alert("Error", "Please add a photo");
+      return;
+    }
 
     setIsSaving(true);
     const session = await getClubSession();
@@ -199,7 +211,7 @@ export default function AddUserScreen() {
       return;
     }
 
-    const imageUrl = imageUri || getDefaultAvatar();
+    const imageUrl = imageUri;
 
     try {
       const { error } = await supabase.rpc("create_club_user", {
@@ -221,7 +233,7 @@ export default function AddUserScreen() {
       }
 
       router.replace({
-        pathname: "/select-user",
+        pathname: "/(tabs)/select-user",
         params: {
           stationId: stationId as any,
           stationName: stationName as any,

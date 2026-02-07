@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
@@ -13,10 +14,11 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { setClubSession } from "../lib/session";
 import { supabase } from "../lib/supabase";
 
 export default function AdminLoginScreen() {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("demo@fpa.se");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -24,6 +26,10 @@ export default function AdminLoginScreen() {
     const e = email.trim();
     if (!e) {
       Alert.alert("Error", "Enter your email");
+      return;
+    }
+    if (e.toLowerCase() !== "demo@fpa.se") {
+      Alert.alert("Not allowed", "This page is only for the demo account");
       return;
     }
     if (!password) {
@@ -43,25 +49,48 @@ export default function AdminLoginScreen() {
         return;
       }
 
-      const { data: adminRow, error: adminError } = await supabase
-        .from("admins")
-        .select("user_id")
-        .eq("user_id", data.user.id)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        Alert.alert("Error", "No user session");
+        return;
+      }
+
+      const { data: staffRow, error: staffError } = await supabase
+        .from("club_staff")
+        .select("club_id")
+        .eq("user_id", user.id)
         .maybeSingle();
 
-      if (adminError) {
-        console.error(adminError);
-        Alert.alert("Error", "Failed to verify admin access");
-        return;
-      }
-
-      if (!adminRow) {
+      if (staffError) throw staffError;
+      if (!staffRow?.club_id) {
         await supabase.auth.signOut();
-        Alert.alert("Not allowed", "This account is not an admin");
+        Alert.alert("Not allowed", "This account is not assigned to a club");
         return;
       }
 
-      router.replace("/admin" as any);
+      const { data: club, error: clubError } = await supabase
+        .from("clubs")
+        .select("id,name,code_4,logo_path")
+        .eq("id", staffRow.club_id)
+        .single();
+
+      if (clubError) throw clubError;
+
+      await setClubSession({
+        type: "club",
+        clubCode: String(club.code_4).trim(),
+        clubId: club.id,
+        clubName: club.name,
+        clubLogoPath: club.logo_path || undefined,
+        loginTime: new Date().toISOString(),
+      });
+
+      await AsyncStorage.setItem("adminLastAuthAt", new Date().toISOString());
+
+      router.replace("/(tabs)/select-user" as any);
     } catch (err) {
       console.error(err);
       Alert.alert("Error", "Could not login");
@@ -82,10 +111,8 @@ export default function AdminLoginScreen() {
         >
           <View style={styles.header}>
             <Ionicons name="shield-checkmark" size={48} color="#111" />
-            <Text style={styles.title}>Admin</Text>
-            <Text style={styles.subtitle}>
-              Sign in to manage clubs and users
-            </Text>
+            <Text style={styles.title}>Demo</Text>
+            <Text style={styles.subtitle}>Sign in to try the demo</Text>
           </View>
 
           <View style={styles.form}>
@@ -105,7 +132,7 @@ export default function AdminLoginScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
-                editable={!isLoading}
+                editable={false}
               />
             </View>
 

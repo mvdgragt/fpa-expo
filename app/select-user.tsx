@@ -32,14 +32,30 @@ export default function SelectUserScreen() {
   const { setUser } = useSelectedUser();
   const insets = useSafeAreaInsets();
 
-  const handleLogout = async () => {
+  const adminPreview = params.adminPreview === "1";
+  const [isAdmin, setIsAdmin] = useState(false);
+  const canAddUser = !adminPreview || isAdmin;
+
+  const handleBackToAdmin = async () => {
     await clearClubSession();
-    router.replace("/login");
+    router.replace("/admin" as any);
   };
 
   // Load users from storage on mount
   useEffect(() => {
     loadUsers();
+  }, []);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const { data } = await supabase.rpc("is_admin_user");
+        setIsAdmin(!!data);
+      } catch {
+        setIsAdmin(false);
+      }
+    };
+    check();
   }, []);
 
   useFocusEffect(
@@ -141,15 +157,17 @@ export default function SelectUserScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={[styles.logoutButton, { top: insets.top + 8 }]}
-        onPress={handleLogout}
-        activeOpacity={0.8}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Ionicons name="log-out-outline" size={18} color="#666" />
-        <Text style={styles.logoutButtonText}>Switch club</Text>
-      </TouchableOpacity>
+      {adminPreview ? (
+        <TouchableOpacity
+          style={[styles.logoutButton, { top: insets.top + 8 }]}
+          onPress={handleBackToAdmin}
+          activeOpacity={0.8}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="arrow-back-outline" size={18} color="#666" />
+          <Text style={styles.logoutButtonText}>Back to admin</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {clubName && (
         <View style={styles.clubBadge}>
@@ -179,14 +197,16 @@ export default function SelectUserScreen() {
         {users.length !== 1 ? "s" : ""})
       </Text>
 
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={handleAddUser}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="person-add" size={20} color="#fff" />
-        <Text style={styles.addButtonText}>Add New User</Text>
-      </TouchableOpacity>
+      {canAddUser ? (
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={handleAddUser}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="person-add" size={20} color="#fff" />
+          <Text style={styles.addButtonText}>Add New User</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {users.length === 0 ? (
         <View style={styles.emptyContainer}>

@@ -27,7 +27,7 @@ export default function StationsScreen() {
     } else {
       // Normal flow: go to select-user first
       router.push({
-        pathname: "/select-user",
+        pathname: "/(tabs)/select-user",
         params: {
           stationId: station.id,
           stationName: station.name,

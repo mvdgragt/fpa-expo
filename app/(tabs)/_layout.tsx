@@ -17,6 +17,15 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
+        name="select-user"
+        options={{
+          title: "Select User",
+          href: null,
+          tabBarStyle: { display: "flex" },
+        }}
+      />
+
+      <Tabs.Screen
         name="stations"
         options={{
           title: "Stations",
@@ -79,6 +88,20 @@ export default function TabLayout() {
             <Ionicons
               name={focused ? "bar-chart" : "bar-chart-outline"}
               size={28}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="logout"
+        options={{
+          title: "Logout",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "log-out" : "log-out-outline"}
+              size={size}
               color={color}
             />
           ),

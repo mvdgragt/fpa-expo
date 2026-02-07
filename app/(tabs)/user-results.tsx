@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
   Image,
   ScrollView,
@@ -35,45 +35,52 @@ export default function UserResultsScreen() {
   const { user } = useSelectedUser();
   const [groupedResults, setGroupedResults] = useState<GroupedResults>({});
 
-  useEffect(() => {
-    const loadUserResults = async () => {
-      try {
-        const savedResults = await AsyncStorage.getItem("testResults");
-        if (savedResults && user) {
-          const allResults: TestResult[] = JSON.parse(savedResults);
+  const loadUserResults = useCallback(async () => {
+    try {
+      const savedResults = await AsyncStorage.getItem("testResults");
+      if (savedResults && user) {
+        const allResults: TestResult[] = JSON.parse(savedResults);
 
-          // Filter results for current user and get latest 5
-          const userResults = allResults
-            .filter((result) => result.userId === user.id)
-            .sort(
-              (a, b) =>
-                new Date(b.timestamp).getTime() -
-                new Date(a.timestamp).getTime(),
-            )
-            .slice(0, 5);
+        // Filter results for current user and get latest 5
+        const userResults = allResults
+          .filter((result) => result.userId === user.id)
+          .sort(
+            (a, b) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+          )
+          .slice(0, 5);
 
-          // Group by station
-          const grouped: GroupedResults = {};
-          userResults.forEach((result) => {
-            if (!grouped[result.stationId]) {
-              grouped[result.stationId] = {
-                stationName: result.stationName,
-                stationShortName: result.stationShortName,
-                results: [],
-              };
-            }
-            grouped[result.stationId].results.push(result);
-          });
+        // Group by station
+        const grouped: GroupedResults = {};
+        userResults.forEach((result) => {
+          if (!grouped[result.stationId]) {
+            grouped[result.stationId] = {
+              stationName: result.stationName,
+              stationShortName: result.stationShortName,
+              results: [],
+            };
+          }
+          grouped[result.stationId].results.push(result);
+        });
 
-          setGroupedResults(grouped);
-        }
-      } catch (error) {
-        console.error("Error loading user results:", error);
+        setGroupedResults(grouped);
+      } else {
+        setGroupedResults({});
       }
-    };
-
-    loadUserResults();
+    } catch (error) {
+      console.error("Error loading user results:", error);
+    }
   }, [user]);
+
+  useEffect(() => {
+    loadUserResults();
+  }, [loadUserResults]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserResults();
+    }, [loadUserResults]),
+  );
 
   const formatDate = (isoString: string) => {
     const date = new Date(isoString);
