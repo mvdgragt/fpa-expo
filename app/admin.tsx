@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -15,6 +16,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useColorScheme,
   View,
 } from "react-native";
 import {
@@ -26,6 +28,29 @@ import { supabase } from "../lib/supabase";
 
 export default function AdminScreen() {
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const colors = useMemo(() => {
+    const dark = colorScheme === "dark";
+    return {
+      dark,
+      bg: dark ? "#0B0B0F" : "#f8f9fa",
+      surface: dark ? "#121218" : "#ffffff",
+      surface2: dark ? "#181820" : "#f3f4f6",
+      border: dark ? "#2a2a36" : "#e0e0e0",
+      border2: dark ? "#333344" : "#e5e7eb",
+      text: dark ? "#F4F4F5" : "#111111",
+      muted: dark ? "#A1A1AA" : "#666666",
+      placeholder: dark ? "#A1A1AA" : "#374151",
+      pillText: dark ? "#D4D4D8" : "#4b5563",
+      primary: dark ? "#F4F4F5" : "#111111",
+      onPrimary: dark ? "#111111" : "#ffffff",
+      danger: "#b91c1c",
+      overlay: "rgba(0,0,0,0.45)",
+    };
+  }, [colorScheme]);
+
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const [isLoading, setIsLoading] = useState(false);
   const [isBooting, setIsBooting] = useState(true);
   const [activeTab, setActiveTab] = useState<"clubs" | "users">("clubs");
@@ -46,6 +71,18 @@ export default function AdminScreen() {
     }[]
   >([]);
 
+  const [staff, setStaff] = useState<
+    {
+      user_id: string;
+      club_id: string;
+      created_at: string;
+      email: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      phone: string | null;
+    }[]
+  >([]);
+
   const [selectedClubId, setSelectedClubId] = useState<string | null>(null);
 
   const [clubModalVisible, setClubModalVisible] = useState(false);
@@ -62,6 +99,9 @@ export default function AdminScreen() {
   const [userSex, setUserSex] = useState<string>("");
 
   const [staffModalVisible, setStaffModalVisible] = useState(false);
+  const [staffEditingUserId, setStaffEditingUserId] = useState<string | null>(
+    null,
+  );
   const [staffFirstName, setStaffFirstName] = useState("");
   const [staffLastName, setStaffLastName] = useState("");
   const [staffEmail, setStaffEmail] = useState("");
@@ -167,9 +207,72 @@ export default function AdminScreen() {
     setUsers(((data || []) as any) || []);
   }, []);
 
+  const loadStaff = useCallback(async () => {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken =
+      refreshed?.session?.access_token || session?.access_token || "";
+    if (!accessToken) {
+      setStaff([]);
+      return;
+    }
+
+    const extra = (Constants.expoConfig?.extra || {}) as {
+      SUPABASE_URL?: string;
+      SUPABASE_ANON_KEY?: string;
+    };
+    const supabaseUrl = extra.SUPABASE_URL;
+    const supabaseAnonKey = extra.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error(
+        "Missing Supabase env. Set SUPABASE_URL and SUPABASE_ANON_KEY.",
+      );
+    }
+
+    const res = await fetch(`${supabaseUrl}/functions/v1/list-club-staff`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(selectedClubId ? { club_id: selectedClubId } : {}),
+    });
+
+    let json: any = null;
+    try {
+      json = await res.json();
+    } catch {
+      // ignore
+    }
+
+    if (!res.ok) {
+      const msg = json?.error || json?.message || `HTTP ${res.status}`;
+      throw new Error(`${msg} (HTTP ${res.status})`);
+    }
+
+    if (!json?.ok || !Array.isArray(json?.staff)) {
+      throw new Error(json?.error || "Could not load staff");
+    }
+
+    setStaff(json.staff);
+  }, [selectedClubId]);
+
   const refresh = useCallback(async () => {
     await Promise.all([loadClubs(), loadUsers()]);
   }, [loadClubs, loadUsers]);
+
+  useEffect(() => {
+    if (isBooting) return;
+    loadStaff().catch((e) => {
+      console.error(e);
+      Alert.alert("Error", (e as any)?.message || "Failed to load staff");
+    });
+  }, [isBooting, loadStaff]);
 
   useEffect(() => {
     const boot = async () => {
@@ -416,11 +519,203 @@ export default function AdminScreen() {
       Alert.alert("Select club", "Select a club filter first.");
       return;
     }
+    setStaffEditingUserId(null);
     setStaffFirstName("");
     setStaffLastName("");
     setStaffEmail("");
     setStaffPhone("");
     setStaffModalVisible(true);
+  };
+
+  const openEditStaff = (s: any) => {
+    if (!selectedClubId) {
+      Alert.alert("Select club", "Select a club filter first.");
+      return;
+    }
+    setStaffEditingUserId(String(s.user_id));
+    setStaffFirstName(String(s.first_name || ""));
+    setStaffLastName(String(s.last_name || ""));
+    setStaffEmail(String(s.email || ""));
+    setStaffPhone(String(s.phone || ""));
+    setStaffModalVisible(true);
+  };
+
+  const updateStaff = async () => {
+    const userId = staffEditingUserId;
+    if (!userId) return;
+    const fn = staffFirstName.trim();
+    const ln = staffLastName.trim();
+    const email = staffEmail.trim().toLowerCase();
+    const phone = staffPhone.trim();
+    if (!fn || !ln || !email) {
+      Alert.alert("Error", "First name, last name and email are required");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const { data: refreshed, error: refreshError } =
+        await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.warn("[updateStaff] refreshSession failed", refreshError);
+      }
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      const accessToken =
+        refreshed?.session?.access_token || session?.access_token;
+      if (!accessToken) {
+        throw new Error("Not signed in. Please sign in again.");
+      }
+
+      const extra = (Constants.expoConfig?.extra || {}) as {
+        SUPABASE_URL?: string;
+        SUPABASE_ANON_KEY?: string;
+      };
+      const supabaseUrl = extra.SUPABASE_URL;
+      const supabaseAnonKey = extra.SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error(
+          "Missing Supabase env. Set SUPABASE_URL and SUPABASE_ANON_KEY.",
+        );
+      }
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/update-club-staff`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          email,
+          first_name: fn,
+          last_name: ln,
+          phone: phone || null,
+        }),
+      });
+
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch {
+        // ignore
+      }
+
+      if (!res.ok) {
+        const msg = json?.error || json?.message || `HTTP ${res.status}`;
+        throw new Error(`${msg} (HTTP ${res.status})`);
+      }
+
+      if (!json?.ok) {
+        throw new Error(json?.error || "Could not update staff user");
+      }
+
+      await loadStaff();
+      setStaffModalVisible(false);
+      Alert.alert("Staff updated", `${email} updated.`);
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert("Error", e?.message || "Could not update staff user");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const deleteStaff = async (userIdOverride?: string) => {
+    const clubId = selectedClubId;
+    const userId = String(userIdOverride || staffEditingUserId || "");
+    if (!clubId || !userId) return;
+
+    Alert.alert("Remove staff", "Remove this staff member from the club?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          setIsLoading(true);
+          try {
+            const { data: refreshed, error: refreshError } =
+              await supabase.auth.refreshSession();
+            if (refreshError) {
+              console.warn("[deleteStaff] refreshSession failed", refreshError);
+            }
+
+            const {
+              data: { session },
+              error: sessionError,
+            } = await supabase.auth.getSession();
+            if (sessionError) throw sessionError;
+
+            const accessToken =
+              refreshed?.session?.access_token || session?.access_token;
+            if (!accessToken) {
+              throw new Error("Not signed in. Please sign in again.");
+            }
+
+            const extra = (Constants.expoConfig?.extra || {}) as {
+              SUPABASE_URL?: string;
+              SUPABASE_ANON_KEY?: string;
+            };
+            const supabaseUrl = extra.SUPABASE_URL;
+            const supabaseAnonKey = extra.SUPABASE_ANON_KEY;
+
+            if (!supabaseUrl || !supabaseAnonKey) {
+              throw new Error(
+                "Missing Supabase env. Set SUPABASE_URL and SUPABASE_ANON_KEY.",
+              );
+            }
+
+            const res = await fetch(
+              `${supabaseUrl}/functions/v1/delete-club-staff`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  apikey: supabaseAnonKey,
+                  Authorization: `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({
+                  club_id: clubId,
+                  user_id: userId,
+                  delete_user: true,
+                }),
+              },
+            );
+
+            let json: any = null;
+            try {
+              json = await res.json();
+            } catch {
+              // ignore
+            }
+
+            if (!res.ok) {
+              const msg = json?.error || json?.message || `HTTP ${res.status}`;
+              throw new Error(`${msg} (HTTP ${res.status})`);
+            }
+
+            if (!json?.ok) {
+              throw new Error(json?.error || "Could not remove staff user");
+            }
+
+            await loadStaff();
+            setStaffModalVisible(false);
+          } catch (e: any) {
+            console.error(e);
+            Alert.alert("Error", e?.message || "Could not remove staff");
+          } finally {
+            setIsLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   const createStaff = async () => {
@@ -434,26 +729,90 @@ export default function AdminScreen() {
       Alert.alert("Error", "First name, last name and email are required");
       return;
     }
+
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "create-club-staff",
-        {
-          body: {
-            club_id: clubId,
-            first_name: fn,
-            last_name: ln,
-            email,
-            phone: phone || null,
-          },
-        },
-      );
-      if (error) throw error;
-      if (!data?.ok) {
-        throw new Error(data?.error || "Could not create staff user");
+      const { data: refreshed, error: refreshError } =
+        await supabase.auth.refreshSession();
+      if (refreshError) {
+        console.warn("[createStaff] refreshSession failed", refreshError);
       }
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+
+      const accessToken =
+        refreshed?.session?.access_token || session?.access_token;
+      if (!accessToken) {
+        throw new Error("Not signed in. Please sign in again.");
+      }
+
+      const { data: userData, error: userError } =
+        await supabase.auth.getUser(accessToken);
+      if (userError) {
+        throw new Error(
+          userError.message || "Invalid session. Please sign in again.",
+        );
+      }
+      if (!userData?.user?.id) {
+        throw new Error("Invalid session. Please sign in again.");
+      }
+
+      const extra = (Constants.expoConfig?.extra || {}) as {
+        SUPABASE_URL?: string;
+        SUPABASE_ANON_KEY?: string;
+      };
+      const supabaseUrl = extra.SUPABASE_URL;
+      const supabaseAnonKey = extra.SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error(
+          "Missing Supabase env. Set SUPABASE_URL and SUPABASE_ANON_KEY.",
+        );
+      }
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-club-staff`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          club_id: clubId,
+          first_name: fn,
+          last_name: ln,
+          email,
+          phone: phone || null,
+        }),
+      });
+
+      let json: any = null;
+      try {
+        json = await res.json();
+      } catch {
+        // ignore
+      }
+
+      if (!res.ok) {
+        const msg = json?.error || json?.message || `HTTP ${res.status}`;
+        throw new Error(`${msg} (HTTP ${res.status})`);
+      }
+
+      if (!json?.ok) {
+        throw new Error(json?.error || "Could not create staff user");
+      }
+
+      await loadStaff();
+
       setStaffModalVisible(false);
-      Alert.alert("Invite sent", `Invite email sent to ${email}`);
+      Alert.alert(
+        "Staff added",
+        `${email} can now sign in with an email code.`,
+      );
     } catch (e: any) {
       console.error(e);
       Alert.alert("Error", e?.message || "Could not create staff user");
@@ -563,7 +922,7 @@ export default function AdminScreen() {
             disabled={isLoading}
             activeOpacity={0.8}
           >
-            <Ionicons name="log-out-outline" size={18} color="#111" />
+            <Ionicons name="log-out-outline" size={18} color={colors.text} />
             <Text style={styles.signOutText}>Sign out</Text>
           </TouchableOpacity>
         </View>
@@ -617,7 +976,7 @@ export default function AdminScreen() {
               activeOpacity={0.8}
               disabled={isLoading}
             >
-              <Ionicons name="add" size={20} color="#fff" />
+              <Ionicons name="add" size={20} color={colors.onPrimary} />
               <Text style={styles.primaryButtonText}>Add club</Text>
             </TouchableOpacity>
 
@@ -643,7 +1002,11 @@ export default function AdminScreen() {
                     activeOpacity={0.8}
                     disabled={isLoading}
                   >
-                    <Ionicons name="eye-outline" size={20} color="#111" />
+                    <Ionicons
+                      name="eye-outline"
+                      size={20}
+                      color={colors.text}
+                    />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.iconButton}
@@ -651,7 +1014,11 @@ export default function AdminScreen() {
                     activeOpacity={0.8}
                     disabled={isLoading}
                   >
-                    <Ionicons name="create-outline" size={20} color="#111" />
+                    <Ionicons
+                      name="create-outline"
+                      size={20}
+                      color={colors.text}
+                    />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.iconButton}
@@ -659,7 +1026,11 @@ export default function AdminScreen() {
                     activeOpacity={0.8}
                     disabled={isLoading}
                   >
-                    <Ionicons name="trash-outline" size={20} color="#b91c1c" />
+                    <Ionicons
+                      name="trash-outline"
+                      size={20}
+                      color={colors.danger}
+                    />
                   </TouchableOpacity>
                 </View>
               )}
@@ -739,6 +1110,71 @@ export default function AdminScreen() {
             <FlatList
               data={filteredUsers}
               keyExtractor={(item) => item.id}
+              ListHeaderComponent={
+                <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+                  <Text
+                    style={[styles.sectionTitle, { marginTop: 8 }]}
+                    numberOfLines={1}
+                  >
+                    Staff
+                  </Text>
+                  {staff.length === 0 ? (
+                    <Text style={styles.cardSub}>No staff added yet.</Text>
+                  ) : (
+                    staff.map((s) => (
+                      <Pressable
+                        key={s.user_id}
+                        onPress={() => openEditStaff(s)}
+                      >
+                        <View style={styles.card}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.cardTitle}>
+                              {(s.first_name || "").trim()}{" "}
+                              {(s.last_name || "").trim()}
+                            </Text>
+                            <Text style={styles.cardSub}>
+                              {s.email || s.user_id}
+                            </Text>
+                            {!selectedClubId ? (
+                              <Text style={styles.cardSub}>
+                                Club: {clubNameById[s.club_id] || s.club_id}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <TouchableOpacity
+                            style={styles.iconButton}
+                            onPress={() => openEditStaff(s)}
+                            activeOpacity={0.8}
+                            disabled={isLoading}
+                          >
+                            <Ionicons
+                              name="create-outline"
+                              size={20}
+                              color={colors.text}
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.iconButton}
+                            onPress={() => deleteStaff(s.user_id)}
+                            activeOpacity={0.8}
+                            disabled={isLoading}
+                          >
+                            <Ionicons
+                              name="trash-outline"
+                              size={20}
+                              color={colors.danger}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      </Pressable>
+                    ))
+                  )}
+
+                  <Text style={[styles.sectionTitle, { marginTop: 14 }]}>
+                    Users
+                  </Text>
+                </View>
+              }
               contentContainerStyle={{
                 paddingBottom: selectionMode ? 120 : 30,
               }}
@@ -792,7 +1228,7 @@ export default function AdminScreen() {
                           <Ionicons
                             name="create-outline"
                             size={20}
-                            color="#111"
+                            color={colors.text}
                           />
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -804,7 +1240,7 @@ export default function AdminScreen() {
                           <Ionicons
                             name="trash-outline"
                             size={20}
-                            color="#b91c1c"
+                            color={colors.danger}
                           />
                         </TouchableOpacity>
                       </>
@@ -835,7 +1271,11 @@ export default function AdminScreen() {
                     activeOpacity={0.8}
                     disabled={isLoading || selectedCount === 0}
                   >
-                    <Ionicons name="trash-outline" size={18} color="#fff" />
+                    <Ionicons
+                      name="trash-outline"
+                      size={18}
+                      color={colors.onPrimary}
+                    />
                     <Text style={styles.bulkDangerText}>Delete</Text>
                   </TouchableOpacity>
                 </View>
@@ -866,12 +1306,14 @@ export default function AdminScreen() {
                   <TextInput
                     style={styles.modalInput}
                     placeholder="Club name"
+                    placeholderTextColor={colors.placeholder}
                     value={clubName}
                     onChangeText={setClubName}
                   />
                   <TextInput
                     style={styles.modalInput}
                     placeholder="4-digit code"
+                    placeholderTextColor={colors.placeholder}
                     value={clubCode}
                     onChangeText={(t) =>
                       setClubCode(t.replace(/\D/g, "").slice(0, 4))
@@ -886,7 +1328,11 @@ export default function AdminScreen() {
                     activeOpacity={0.8}
                     disabled={isLoading}
                   >
-                    <Ionicons name="image-outline" size={18} color="#111" />
+                    <Ionicons
+                      name="image-outline"
+                      size={18}
+                      color={colors.text}
+                    />
                     <Text style={styles.secondaryButtonText}>
                       {clubLogoUri ? "Change logo" : "Pick logo"}
                     </Text>
@@ -937,24 +1383,28 @@ export default function AdminScreen() {
                   <TextInput
                     style={styles.modalInput}
                     placeholder="First name"
+                    placeholderTextColor={colors.placeholder}
                     value={userFirstName}
                     onChangeText={setUserFirstName}
                   />
                   <TextInput
                     style={styles.modalInput}
                     placeholder="Last name"
+                    placeholderTextColor={colors.placeholder}
                     value={userLastName}
                     onChangeText={setUserLastName}
                   />
                   <TextInput
                     style={styles.modalInput}
                     placeholder="DOB (DD/MM/YYYY)"
+                    placeholderTextColor={colors.placeholder}
                     value={userDob}
                     onChangeText={setUserDob}
                   />
                   <TextInput
                     style={styles.modalInput}
                     placeholder="Sex (male/female)"
+                    placeholderTextColor={colors.placeholder}
                     value={userSex}
                     onChangeText={setUserSex}
                   />
@@ -1000,10 +1450,13 @@ export default function AdminScreen() {
                   keyboardShouldPersistTaps="handled"
                   contentContainerStyle={styles.modalScrollContent}
                 >
-                  <Text style={styles.modalTitle}>Invite staff user</Text>
+                  <Text style={styles.modalTitle}>
+                    {staffEditingUserId ? "Edit staff" : "Add staff"}
+                  </Text>
                   <TextInput
                     style={styles.modalInput}
                     placeholder="First name"
+                    placeholderTextColor={colors.placeholder}
                     value={staffFirstName}
                     onChangeText={setStaffFirstName}
                     autoCapitalize="words"
@@ -1011,6 +1464,7 @@ export default function AdminScreen() {
                   <TextInput
                     style={styles.modalInput}
                     placeholder="Last name"
+                    placeholderTextColor={colors.placeholder}
                     value={staffLastName}
                     onChangeText={setStaffLastName}
                     autoCapitalize="words"
@@ -1018,6 +1472,7 @@ export default function AdminScreen() {
                   <TextInput
                     style={styles.modalInput}
                     placeholder="Email"
+                    placeholderTextColor={colors.placeholder}
                     value={staffEmail}
                     onChangeText={setStaffEmail}
                     autoCapitalize="none"
@@ -1026,6 +1481,7 @@ export default function AdminScreen() {
                   <TextInput
                     style={styles.modalInput}
                     placeholder="Phone (optional)"
+                    placeholderTextColor={colors.placeholder}
                     value={staffPhone}
                     onChangeText={setStaffPhone}
                     autoCapitalize="none"
@@ -1041,14 +1497,30 @@ export default function AdminScreen() {
                     >
                       <Text style={styles.modalCancelText}>Cancel</Text>
                     </TouchableOpacity>
+                    {staffEditingUserId ? (
+                      <TouchableOpacity
+                        style={styles.modalCancelButton}
+                        onPress={() => deleteStaff()}
+                        activeOpacity={0.8}
+                        disabled={isLoading}
+                      >
+                        <Text style={styles.modalCancelText}>Remove</Text>
+                      </TouchableOpacity>
+                    ) : null}
                     <TouchableOpacity
                       style={styles.modalSaveButton}
-                      onPress={createStaff}
+                      onPress={staffEditingUserId ? updateStaff : createStaff}
                       activeOpacity={0.8}
                       disabled={isLoading}
                     >
                       <Text style={styles.modalSaveText}>
-                        {isLoading ? "Sending..." : "Send invite"}
+                        {isLoading
+                          ? staffEditingUserId
+                            ? "Saving..."
+                            : "Saving..."
+                          : staffEditingUserId
+                            ? "Save"
+                            : "Add"}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -1062,254 +1534,299 @@ export default function AdminScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8f9fa" },
-  content: { flex: 1, paddingHorizontal: 16, paddingTop: 20 },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  title: { fontSize: 28, fontWeight: "800", color: "#111" },
-  subtitle: {
-    marginTop: 6,
-    fontSize: 14,
-    color: "#666",
-  },
-  signOutButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-  },
-  buttonDisabled: { opacity: 0.6 },
-  signOutText: { color: "#111", fontSize: 14, fontWeight: "700" },
-  tabRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
-  },
-  tabButton: {
-    flex: 1,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  tabActive: {
-    borderColor: "#111",
-  },
-  tabText: { fontSize: 14, fontWeight: "700", color: "#666" },
-  tabTextActive: { color: "#111" },
-  pillRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  pillWrapper: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    marginBottom: 6,
-  },
-  primaryButton: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#111",
-    borderRadius: 12,
-    paddingVertical: 14,
-    marginBottom: 12,
-  },
-  primaryButtonText: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  card: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    alignItems: "center",
-    gap: 10,
-  },
-  cardTitle: { fontSize: 16, fontWeight: "800", color: "#111" },
-  cardSub: { marginTop: 2, fontSize: 12, color: "#666" },
-  iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    backgroundColor: "#fff",
-  },
-  centerState: { paddingTop: 40, alignItems: "center" },
-  centerStateText: { color: "#666", fontSize: 14, fontWeight: "600" },
-  filterPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: "#f3f4f6",
-    marginRight: 8, // 👈 spacing between pills
-  },
-  filterPillActive: {
-    borderColor: "#111",
-    backgroundColor: "#111",
-  },
-  filterPillText: { color: "#4b5563", fontSize: 13, fontWeight: "800" },
-  filterPillTextActive: { color: "#fff" },
-  usersToolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  usersToolbarActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  usersToolbarHint: { fontSize: 13, color: "#666" },
-  usersToolbarButton: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  usersToolbarButtonText: { color: "#111", fontSize: 13, fontWeight: "900" },
-  userTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  selectDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: "#cbd5e1",
-    backgroundColor: "#fff",
-  },
-  selectDotSelected: {
-    borderColor: "#111",
-    backgroundColor: "#111",
-  },
-  cardSelected: {
-    borderColor: "#111",
-    backgroundColor: "#f3f4f6",
-  },
-  bulkBar: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 16,
-    backgroundColor: "#111",
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  bulkBarText: { color: "#fff", fontSize: 14, fontWeight: "900" },
-  bulkSecondary: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-  bulkSecondaryText: { color: "#fff", fontSize: 13, fontWeight: "900" },
-  bulkDanger: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "#b91c1c",
-  },
-  bulkDangerDisabled: { opacity: 0.5 },
-  bulkDangerText: { color: "#fff", fontSize: 13, fontWeight: "900" },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "flex-end",
-  },
-  modalCard: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 16,
-    maxHeight: "92%",
-  },
-  modalCardClub: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 18,
-    maxHeight: "96%",
-  },
-  modalScrollContent: {
-    paddingBottom: 12,
-  },
-  modalTitle: { fontSize: 18, fontWeight: "900", color: "#111" },
-  modalInput: {
-    marginTop: 10,
-    backgroundColor: "#fff",
-    borderWidth: 2,
-    borderColor: "#e0e0e0",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#111",
-  },
-  secondaryButton: {
-    marginTop: 10,
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderRadius: 12,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-  },
-  secondaryButtonText: { color: "#111", fontSize: 14, fontWeight: "800" },
-  modalButtonsRow: { flexDirection: "row", gap: 10, marginTop: 14 },
-  modalCancelButton: {
-    flex: 1,
-    borderWidth: 2,
-    borderColor: "#e0e0e0",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    backgroundColor: "#fff",
-  },
-  modalCancelText: { color: "#666", fontSize: 15, fontWeight: "800" },
-  modalSaveButton: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    backgroundColor: "#111",
-  },
-  modalSaveText: { color: "#fff", fontSize: 15, fontWeight: "900" },
-});
+type ThemeColors = {
+  dark: boolean;
+  bg: string;
+  surface: string;
+  surface2: string;
+  border: string;
+  border2: string;
+  text: string;
+  muted: string;
+  pillText: string;
+  primary: string;
+  onPrimary: string;
+  danger: string;
+  overlay: string;
+};
+
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    content: { flex: 1, paddingHorizontal: 16, paddingTop: 20 },
+    topRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    title: { fontSize: 28, fontWeight: "800", color: colors.text },
+    subtitle: {
+      marginTop: 6,
+      fontSize: 14,
+      color: colors.muted,
+    },
+    signOutButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    buttonDisabled: { opacity: 0.6 },
+    signOutText: { color: colors.text, fontSize: 14, fontWeight: "700" },
+    tabRow: {
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 12,
+    },
+    tabButton: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: 12,
+      alignItems: "center",
+    },
+    tabActive: {
+      borderColor: colors.primary,
+    },
+    tabText: { fontSize: 14, fontWeight: "700", color: colors.muted },
+    tabTextActive: { color: colors.text },
+    pillRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    pillWrapper: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border2,
+      borderRadius: 16,
+      paddingVertical: 6,
+      paddingHorizontal: 8,
+      marginBottom: 6,
+    },
+    primaryButton: {
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      marginBottom: 12,
+    },
+    primaryButtonText: {
+      color: colors.onPrimary,
+      fontSize: 16,
+      fontWeight: "800",
+    },
+    card: {
+      flexDirection: "row",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      padding: 14,
+      marginBottom: 10,
+      alignItems: "center",
+      gap: 10,
+    },
+    sectionTitle: {
+      fontSize: 13,
+      fontWeight: "800",
+      letterSpacing: 0.3,
+      color: colors.muted,
+    },
+    cardTitle: { fontSize: 16, fontWeight: "800", color: colors.text },
+    cardSub: { marginTop: 2, fontSize: 12, color: colors.muted },
+    iconButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    centerState: { paddingTop: 40, alignItems: "center" },
+    centerStateText: { color: colors.muted, fontSize: 14, fontWeight: "600" },
+    filterPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: colors.surface2,
+      marginRight: 8, // 👈 spacing between pills
+    },
+    filterPillActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
+    },
+    filterPillText: { color: colors.pillText, fontSize: 13, fontWeight: "800" },
+    filterPillTextActive: { color: colors.onPrimary },
+    usersToolbar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+    usersToolbarActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    usersToolbarHint: { fontSize: 13, color: colors.muted },
+    usersToolbarButton: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    usersToolbarButtonText: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: "900",
+    },
+    userTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    selectDot: {
+      width: 14,
+      height: 14,
+      borderRadius: 999,
+      borderWidth: 2,
+      borderColor: colors.border2,
+      backgroundColor: colors.surface,
+    },
+    selectDotSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary,
+    },
+    cardSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.surface2,
+    },
+    bulkBar: {
+      position: "absolute",
+      left: 16,
+      right: 16,
+      bottom: 16,
+      backgroundColor: colors.primary,
+      borderRadius: 16,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    bulkBarText: { color: colors.onPrimary, fontSize: 14, fontWeight: "900" },
+    bulkSecondary: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: colors.dark
+        ? "rgba(0,0,0,0.16)"
+        : "rgba(255,255,255,0.14)",
+    },
+    bulkSecondaryText: {
+      color: colors.onPrimary,
+      fontSize: 13,
+      fontWeight: "900",
+    },
+    bulkDanger: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: colors.danger,
+    },
+    bulkDangerDisabled: { opacity: 0.5 },
+    bulkDangerText: {
+      color: colors.onPrimary,
+      fontSize: 13,
+      fontWeight: "900",
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: colors.overlay,
+      justifyContent: "flex-end",
+    },
+    modalCard: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 18,
+      borderTopRightRadius: 18,
+      padding: 16,
+      maxHeight: "92%",
+    },
+    modalCardClub: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 18,
+      borderTopRightRadius: 18,
+      padding: 18,
+      maxHeight: "96%",
+    },
+    modalScrollContent: {
+      paddingBottom: 12,
+    },
+    modalTitle: { fontSize: 18, fontWeight: "900", color: colors.text },
+    modalInput: {
+      marginTop: 10,
+      backgroundColor: colors.surface,
+      borderWidth: 2,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      fontSize: 16,
+      color: colors.text,
+    },
+    secondaryButton: {
+      marginTop: 10,
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: 12,
+      backgroundColor: colors.surface,
+    },
+    secondaryButtonText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: "800",
+    },
+    modalButtonsRow: { flexDirection: "row", gap: 10, marginTop: 14 },
+    modalCancelButton: {
+      flex: 1,
+      borderWidth: 2,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: 12,
+      alignItems: "center",
+      backgroundColor: colors.surface,
+    },
+    modalCancelText: { color: colors.muted, fontSize: 15, fontWeight: "800" },
+    modalSaveButton: {
+      flex: 1,
+      borderRadius: 12,
+      paddingVertical: 12,
+      alignItems: "center",
+      backgroundColor: colors.primary,
+    },
+    modalSaveText: { color: colors.onPrimary, fontSize: 15, fontWeight: "900" },
+  });

@@ -12,7 +12,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.fpaexpo",
@@ -73,6 +75,7 @@
       "eas": {
         "projectId": "0a9fa9fd-e773-49e2-bf8e-98a2fa8c17bd"
       }
-    }
+    },
+    "owner": "mvdgragtexpo"
   }
 }
