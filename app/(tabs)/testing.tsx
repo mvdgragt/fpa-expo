@@ -31,11 +31,14 @@ export default function TestingScreen() {
   const [hasStarted, setHasStarted] = useState(false);
   const [buttonText, setButtonText] = useState("waiting");
   const [isFinished, setIsFinished] = useState(false);
+  const [lapTime, setLapTime] = useState<number | null>(null);
 
   const { stationId, stationName, stationShortName } = params;
   const startTimeRef = useRef<number | null>(null);
   const wasReady = useRef(false);
   const stopGateReady = useRef(false); // true once remote sensor sees > 150 (no one there)
+  const stopPassCount = useRef(0);
+  const stopGateArmed = useRef(false);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -46,12 +49,17 @@ export default function TestingScreen() {
     setIsRunning(true);
     setHasStarted(true);
     startTimeRef.current = Date.now();
+    stopGateReady.current = false;
   }, []);
 
   const handleStop = useCallback(async () => {
+    const elapsedMs = startTimeRef.current
+      ? Date.now() - startTimeRef.current
+      : time;
     setIsRunning(false);
     setIsFinished(true);
-    const finalTime = (time / 1000).toFixed(2);
+    setTime(elapsedMs);
+    const finalTime = (elapsedMs / 1000).toFixed(2);
 
     try {
       const result = {
@@ -83,7 +91,12 @@ export default function TestingScreen() {
     user?.name,
   ]);
 
-  const isFlyingTwenty = stationId === "flying-20";
+  const isFiveTenFive = stationId === "five-ten-five";
+  const isRemoteStopStation =
+    stationId === "flying-20" ||
+    stationId === "ten-meter-sprint" ||
+    stationId === "twenty-meter-sprint" ||
+    stationId === "skill-test";
 
   // START gate logic — hub sensor detects athlete
   useEffect(() => {
@@ -106,10 +119,31 @@ export default function TestingScreen() {
       } else {
         setButtonText("waiting");
       }
-    } else if (isRunning && !isFlyingTwenty) {
+    } else if (isRunning && !isRemoteStopStation) {
       // For non-flying-twenty stations, hub is also the stop gate
-      if (d <= 150) {
-        handleStop();
+      if (isFiveTenFive) {
+        if (d > 150) {
+          // Gate is clear — arm it
+          stopGateArmed.current = true;
+        } else if (stopGateArmed.current && d <= 150) {
+          // Athlete passed the gate
+          stopGateArmed.current = false;
+          stopPassCount.current += 1;
+
+          const elapsedMs = startTimeRef.current
+            ? Date.now() - startTimeRef.current
+            : time;
+
+          if (stopPassCount.current === 1) {
+            setLapTime(elapsedMs);
+          } else if (stopPassCount.current >= 2) {
+            handleStop();
+          }
+        }
+      } else {
+        if (d <= 150) {
+          handleStop();
+        }
       }
     }
   }, [
@@ -119,15 +153,17 @@ export default function TestingScreen() {
     handleStop,
     hasStarted,
     isRunning,
-    isFlyingTwenty,
+    isRemoteStopStation,
+    isFiveTenFive,
+    time,
   ]);
 
-  // STOP gate logic — remote sensor (second ESP32), ONLY for flying twenty
+  // STOP gate logic — remote sensor (second ESP32) for stations that stop remotely
   // Requires a state transition: sensor must see > 150 (clear) first,
   // then ≤ 150 (athlete passing) to trigger stop.
   // remoteDistance of 0 is ignored (sensor error / no data from ESP-NOW yet).
   useEffect(() => {
-    if (!isFlyingTwenty) return;
+    if (!isRemoteStopStation) return;
     if (!isRunning || remoteDistance === null || remoteDistance === 0) return;
 
     if (remoteDistance > 150) {
@@ -137,7 +173,7 @@ export default function TestingScreen() {
       // Athlete passed stop gate → auto-stop timer
       handleStop();
     }
-  }, [remoteDistance, handleStop, isRunning, isFlyingTwenty]);
+  }, [remoteDistance, handleStop, isRunning, isRemoteStopStation]);
 
   // Detect station change and trigger animation
   useEffect(() => {
@@ -145,6 +181,17 @@ export default function TestingScreen() {
       previousStationId.current !== stationId &&
       previousStationId.current !== undefined
     ) {
+      setIsRunning(false);
+      setTime(0);
+      setHasStarted(false);
+      setIsFinished(false);
+      setLapTime(null);
+      startTimeRef.current = null;
+      wasReady.current = false;
+      stopGateReady.current = false;
+      stopPassCount.current = 0;
+      stopGateArmed.current = false;
+
       Animated.sequence([
         Animated.parallel([
           Animated.timing(fadeAnim, {
@@ -191,9 +238,12 @@ export default function TestingScreen() {
     setTime(0);
     setHasStarted(false);
     setIsFinished(false);
+    setLapTime(null);
     startTimeRef.current = null;
     wasReady.current = false;
     stopGateReady.current = false;
+    stopPassCount.current = 0;
+    stopGateArmed.current = false;
   };
 
   const handleChangeUser = () => {
@@ -473,6 +523,9 @@ export default function TestingScreen() {
       {/* Timer Display */}
       <View style={styles.timerContainer}>
         <Text style={styles.timerText}>{formatTime(time)}</Text>
+        {isFiveTenFive && lapTime !== null ? (
+          <Text style={styles.lapText}>Lap: {formatTime(lapTime)}</Text>
+        ) : null}
       </View>
 
       {/* Control Buttons */}
@@ -794,19 +847,23 @@ const styles = StyleSheet.create({
     fontSize: 64,
     fontWeight: "bold",
     color: "#1a1a1a",
-    fontVariant: ["tabular-nums"],
   },
-  buttonContainer: {
-    flexDirection: "row",
-    gap: 20,
-    marginBottom: 40,
+  lapText: {
+    marginTop: 12,
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#007AFF",
   },
   finishedButtonsContainer: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-    marginHorizontal: 10,
-    marginBottom: 40,
+    gap: 16,
+    width: "100%",
+  },
+  buttonContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    width: "100%",
+    marginTop: 20,
   },
   finishedButton: {
     flex: 1,
