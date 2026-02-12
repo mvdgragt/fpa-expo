@@ -2,6 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  extractUserPhotoObjectPath,
+  getSignedUserPhotoUrl,
+} from "../../lib/user-photos";
 
 interface TestResult {
   userId: string;
@@ -24,6 +28,8 @@ interface GroupedResults {
 
 export default function ResultsScreen() {
   const [groupedResults, setGroupedResults] = useState<GroupedResults>({});
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const defaultAvatarUrl = "https://www.gravatar.com/avatar/?d=mp&f=y";
 
   useEffect(() => {
     loadResults();
@@ -38,6 +44,30 @@ export default function ResultsScreen() {
       const savedResults = await AsyncStorage.getItem("testResults");
       if (savedResults) {
         const allResults: TestResult[] = JSON.parse(savedResults);
+
+        try {
+          const unique = Array.from(
+            new Set(
+              allResults.map((r) => String(r.userImage || "")).filter(Boolean),
+            ),
+          );
+          const entries = await Promise.all(
+            unique.map(async (raw) => {
+              const path = extractUserPhotoObjectPath(raw);
+              const url = path ? await getSignedUserPhotoUrl(path) : "";
+              return [raw, url] as const;
+            }),
+          );
+          setSignedUrls((prev) => {
+            const next = { ...prev };
+            for (const [raw, url] of entries) {
+              if (url) next[raw] = url;
+            }
+            return next;
+          });
+        } catch {
+          // ignore
+        }
 
         // Group by station
         const grouped: GroupedResults = {};
@@ -158,7 +188,9 @@ export default function ResultsScreen() {
                 </View>
 
                 <Image
-                  source={{ uri: result.userImage }}
+                  source={{
+                    uri: signedUrls[result.userImage] || defaultAvatarUrl,
+                  }}
                   style={styles.resultUserImage}
                 />
 

@@ -16,11 +16,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSelectedUser } from "../context/SelectedUserContext";
 import { clearClubSession, getClubSession } from "../lib/session";
 import { supabase } from "../lib/supabase";
+import {
+  extractUserPhotoObjectPath,
+  getSignedUserPhotoUrl,
+} from "../lib/user-photos";
 
 type UserType = {
   id: string;
   name: string;
-  image: string;
+  imagePath: string;
+  signedImageUrl: string;
   firstName: string;
   lastName: string;
   dob: string;
@@ -94,13 +99,26 @@ export default function SelectUserScreen() {
       const mapped: UserType[] = (data || []).map((u: any) => ({
         id: u.id,
         name: `${u.first_name} ${u.last_name}`,
-        image: typeof u.image_url === "string" ? u.image_url.trim() : "",
+        imagePath: typeof u.image_url === "string" ? u.image_url.trim() : "",
+        signedImageUrl: "",
         firstName: typeof u.first_name === "string" ? u.first_name : "",
         lastName: typeof u.last_name === "string" ? u.last_name : "",
         dob: typeof u.dob === "string" ? u.dob : "",
         sex: typeof u.sex === "string" ? u.sex : "",
       }));
       setUsers(mapped);
+      try {
+        const withSigned = await Promise.all(
+          mapped.map(async (u) => {
+            const path = extractUserPhotoObjectPath(u.imagePath);
+            const url = path ? await getSignedUserPhotoUrl(path) : "";
+            return { ...u, signedImageUrl: url };
+          }),
+        );
+        setUsers(withSigned);
+      } catch {
+        // ignore
+      }
       setImageErrors({});
     } catch (error) {
       console.error("Error loading users:", error);
@@ -127,7 +145,7 @@ export default function SelectUserScreen() {
       setUser({
         id: selectedUser.id,
         name: selectedUser.name,
-        image: selectedUser.image,
+        image: selectedUser.imagePath || "",
       });
 
       // Navigate immediately
@@ -212,7 +230,7 @@ export default function SelectUserScreen() {
           lastName: u.lastName,
           dob: u.dob,
           sex: u.sex,
-          imageUrl: u.image,
+          imageUrl: u.imagePath,
           stationId,
           stationName,
           stationShortName,
@@ -276,13 +294,13 @@ export default function SelectUserScreen() {
           style={{ alignItems: "center", transform: [{ rotate }] }}
         >
           <Image
-            key={`${item.id}:${item.image}`}
+            key={`${item.id}:${item.imagePath}:${item.signedImageUrl}`}
             source={{
               uri:
-                item.image && !imageErrors[item.id]
-                  ? item.image
+                item.signedImageUrl && !imageErrors[item.id]
+                  ? item.signedImageUrl
                   : defaultAvatarUrl,
-              cache: item.image ? "reload" : "default",
+              cache: item.signedImageUrl ? "reload" : "default",
             }}
             style={styles.userImage}
             onError={() =>

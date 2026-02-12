@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router, useGlobalSearchParams } from "expo-router";
 import { useState } from "react";
@@ -195,12 +196,7 @@ export default function AddUserScreen() {
       );
     }
 
-    const { data } = supabase.storage
-      .from("user-photos")
-      .getPublicUrl(objectPath);
-    if (!data?.publicUrl)
-      throw new Error("Could not create public URL for uploaded photo");
-    return data.publicUrl;
+    return objectPath;
   };
 
   const showImageOptions = () => {
@@ -290,8 +286,15 @@ export default function AddUserScreen() {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)/g, "");
-    const persistedUri = await persistProfilePhoto(
+
+    const processed = await ImageManipulator.manipulateAsync(
       imageUri,
+      [{ resize: { width: 512, height: 512 } }],
+      { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG },
+    );
+
+    const persistedUri = await persistProfilePhoto(
+      processed.uri,
       userIdHint || "user",
     );
 

@@ -26,11 +26,18 @@ import {
 } from "react-native-safe-area-context";
 import { setClubSession } from "../lib/session";
 import { supabase } from "../lib/supabase";
+import {
+  extractUserPhotoObjectPath,
+  getSignedUserPhotoUrl,
+} from "../lib/user-photos";
 
 export default function AdminScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const [userImageErrors, setUserImageErrors] = useState<Record<string, true>>(
+    {},
+  );
+  const [userSignedUrls, setUserSignedUrls] = useState<Record<string, string>>(
     {},
   );
   const colors = useMemo(() => {
@@ -208,7 +215,27 @@ export default function AdminScreen() {
 
     if (error) throw error;
 
-    setUsers(((data || []) as any) || []);
+    const rows = (((data || []) as any) || []) as any[];
+    setUsers(rows);
+    try {
+      const entries = await Promise.all(
+        rows.map(async (u) => {
+          const raw = typeof u.image_url === "string" ? u.image_url.trim() : "";
+          const path = extractUserPhotoObjectPath(raw);
+          const url = path ? await getSignedUserPhotoUrl(path) : "";
+          return [String(u.id), url] as const;
+        }),
+      );
+      setUserSignedUrls((prev) => {
+        const next = { ...prev };
+        for (const [id, url] of entries) {
+          if (url) next[id] = url;
+        }
+        return next;
+      });
+    } catch {
+      // ignore
+    }
   }, []);
 
   const loadStaff = useCallback(async () => {
@@ -1203,16 +1230,10 @@ export default function AdminScreen() {
                       key={`${item.id}:${String(item.image_url || "")}`}
                       source={{
                         uri:
-                          !userImageErrors[item.id] &&
-                          typeof item.image_url === "string" &&
-                          item.image_url.trim()
-                            ? item.image_url.trim()
+                          !userImageErrors[item.id] && userSignedUrls[item.id]
+                            ? userSignedUrls[item.id]
                             : "https://www.gravatar.com/avatar/?d=mp&f=y",
-                        cache:
-                          typeof item.image_url === "string" &&
-                          item.image_url.trim()
-                            ? "reload"
-                            : "default",
+                        cache: userSignedUrls[item.id] ? "reload" : "default",
                       }}
                       style={styles.userAvatar}
                       onError={() =>

@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { router, useGlobalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActionSheetIOS,
   Alert,
@@ -20,6 +21,10 @@ import {
 } from "react-native";
 import { getClubSession } from "../lib/session";
 import { supabase } from "../lib/supabase";
+import {
+  extractUserPhotoObjectPath,
+  getSignedUserPhotoUrl,
+} from "../lib/user-photos";
 
 type Sex = "male" | "female" | "";
 
@@ -32,10 +37,8 @@ export default function EditUserScreen() {
   const initialLastName =
     typeof params.lastName === "string" ? params.lastName : "";
   const initialDob = typeof params.dob === "string" ? params.dob : "";
-  const initialSex = (typeof params.sex === "string"
-    ? params.sex
-    : "") as Sex;
-  const initialImageUrl =
+  const initialSex = (typeof params.sex === "string" ? params.sex : "") as Sex;
+  const initialImageValue =
     typeof params.imageUrl === "string" ? params.imageUrl : "";
 
   const { stationId, stationName, stationShortName } = params;
@@ -44,13 +47,27 @@ export default function EditUserScreen() {
   const [lastName, setLastName] = useState(initialLastName);
   const [dob, setDob] = useState(initialDob);
   const [sex, setSex] = useState<Sex>(initialSex);
-  const [imageUri, setImageUri] = useState<string>(initialImageUrl);
+  const [imageUri, setImageUri] = useState<string>(initialImageValue);
+  const [signedImageUrl, setSignedImageUrl] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
 
   const [dobModalVisible, setDobModalVisible] = useState(false);
   const [dobDay, setDobDay] = useState<number | null>(null);
   const [dobMonth, setDobMonth] = useState<number | null>(null);
   const [dobYear, setDobYear] = useState<number | null>(null);
+
+  useEffect(() => {
+    const run = async () => {
+      const path = extractUserPhotoObjectPath(initialImageValue);
+      if (!path) {
+        setSignedImageUrl("");
+        return;
+      }
+      const url = await getSignedUserPhotoUrl(path);
+      setSignedImageUrl(url);
+    };
+    run();
+  }, [initialImageValue]);
 
   const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -150,7 +167,8 @@ export default function EditUserScreen() {
         quality: 0.7,
       });
     } else {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         Alert.alert(
           "Permission needed",
@@ -262,12 +280,7 @@ export default function EditUserScreen() {
       );
     }
 
-    const { data } = supabase.storage.from("user-photos").getPublicUrl(objectPath);
-    if (!data?.publicUrl) {
-      throw new Error("Could not create public URL for uploaded photo");
-    }
-
-    return data.publicUrl;
+    return objectPath;
   };
 
   const handleSave = async () => {
@@ -302,7 +315,7 @@ export default function EditUserScreen() {
         return;
       }
 
-      let nextImageUrl = initialImageUrl;
+      let nextImageValue = initialImageValue;
       const hasNewLocalPhoto =
         typeof imageUri === "string" &&
         imageUri.length > 0 &&
@@ -314,8 +327,14 @@ export default function EditUserScreen() {
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/(^-|-$)/g, "");
 
-        const persistedUri = await persistProfilePhoto(
+        const processed = await ImageManipulator.manipulateAsync(
           imageUri,
+          [{ resize: { width: 512, height: 512 } }],
+          { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG },
+        );
+
+        const persistedUri = await persistProfilePhoto(
+          processed.uri,
           userIdHint || "user",
         );
 
@@ -327,7 +346,7 @@ export default function EditUserScreen() {
         })();
 
         const objectPath = `${session.clubId}/${userIdHint || "user"}-${Date.now()}.${ext}`;
-        nextImageUrl = await uploadProfilePhoto(persistedUri, objectPath);
+        nextImageValue = await uploadProfilePhoto(persistedUri, objectPath);
       }
 
       const { error } = await supabase
@@ -337,7 +356,7 @@ export default function EditUserScreen() {
           last_name: lastName.trim(),
           dob: dob || null,
           sex: sex || null,
-          image_url: nextImageUrl || null,
+          image_url: nextImageValue || null,
         })
         .eq("id", userId);
 
@@ -396,9 +415,15 @@ export default function EditUserScreen() {
           <Image
             source={{
               uri:
-                imageUri && typeof imageUri === "string"
+                imageUri &&
+                typeof imageUri === "string" &&
+                !imageUri.startsWith("http")
                   ? imageUri
-                  : "https://www.gravatar.com/avatar/?d=mp&f=y",
+                  : signedImageUrl ||
+                    (typeof imageUri === "string" && imageUri.startsWith("http")
+                      ? imageUri
+                      : "") ||
+                    "https://www.gravatar.com/avatar/?d=mp&f=y",
             }}
             style={styles.profileImage}
           />
@@ -467,7 +492,10 @@ export default function EditUserScreen() {
         </View>
 
         <TouchableOpacity
-          style={[styles.saveButton, isSaving ? styles.saveButtonDisabled : null]}
+          style={[
+            styles.saveButton,
+            isSaving ? styles.saveButtonDisabled : null,
+          ]}
           onPress={handleSave}
           disabled={isSaving}
           activeOpacity={0.8}
@@ -586,7 +614,12 @@ export default function EditUserScreen() {
                 onPress={confirmDob}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>
+                <Text
+                  style={[
+                    styles.modalButtonText,
+                    styles.modalButtonTextPrimary,
+                  ]}
+                >
                   Confirm
                 </Text>
               </TouchableOpacity>

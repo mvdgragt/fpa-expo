@@ -11,6 +11,10 @@ import {
   View,
 } from "react-native";
 import { useSelectedUser } from "../../context/SelectedUserContext";
+import {
+  extractUserPhotoObjectPath,
+  getSignedUserPhotoUrl,
+} from "../../lib/user-photos";
 
 interface TestResult {
   userId: string;
@@ -34,12 +38,38 @@ interface GroupedResults {
 export default function UserResultsScreen() {
   const { user } = useSelectedUser();
   const [groupedResults, setGroupedResults] = useState<GroupedResults>({});
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const defaultAvatarUrl = "https://www.gravatar.com/avatar/?d=mp&f=y";
 
   const loadUserResults = useCallback(async () => {
     try {
       const savedResults = await AsyncStorage.getItem("testResults");
       if (savedResults && user) {
         const allResults: TestResult[] = JSON.parse(savedResults);
+
+        try {
+          const unique = Array.from(
+            new Set(
+              allResults.map((r) => String(r.userImage || "")).filter(Boolean),
+            ),
+          );
+          const entries = await Promise.all(
+            unique.map(async (raw) => {
+              const path = extractUserPhotoObjectPath(raw);
+              const url = path ? await getSignedUserPhotoUrl(path) : "";
+              return [raw, url] as const;
+            }),
+          );
+          setSignedUrls((prev) => {
+            const next = { ...prev };
+            for (const [raw, url] of entries) {
+              if (url) next[raw] = url;
+            }
+            return next;
+          });
+        } catch {
+          // ignore
+        }
 
         // Filter results for current user and get latest 5
         const userResults = allResults
@@ -140,7 +170,9 @@ export default function UserResultsScreen() {
                   style={styles.resultCard}
                 >
                   <Image
-                    source={{ uri: result.userImage }}
+                    source={{
+                      uri: signedUrls[result.userImage] || defaultAvatarUrl,
+                    }}
                     style={styles.resultUserImage}
                   />
 

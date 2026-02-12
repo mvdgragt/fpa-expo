@@ -15,6 +15,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useBle } from "../../context/BLEContext"; // Import the BLE hook
 import { useSelectedUser } from "../../context/SelectedUserContext";
+import {
+  extractUserPhotoObjectPath,
+  getSignedUserPhotoUrl,
+} from "../../lib/user-photos";
 
 export default function TestingScreen() {
   const params = useGlobalSearchParams();
@@ -32,6 +36,7 @@ export default function TestingScreen() {
   const [buttonText, setButtonText] = useState("waiting");
   const [isFinished, setIsFinished] = useState(false);
   const [lapTime, setLapTime] = useState<number | null>(null);
+  const [userSignedImageUrl, setUserSignedImageUrl] = useState<string>("");
 
   const { stationId, stationName, stationShortName } = params;
   const startTimeRef = useRef<number | null>(null);
@@ -44,6 +49,20 @@ export default function TestingScreen() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const previousStationId = useRef(stationId);
+
+  useEffect(() => {
+    const run = async () => {
+      const raw = typeof user?.image === "string" ? user.image : "";
+      const path = extractUserPhotoObjectPath(raw);
+      if (!path) {
+        setUserSignedImageUrl("");
+        return;
+      }
+      const url = await getSignedUserPhotoUrl(path);
+      setUserSignedImageUrl(url);
+    };
+    run();
+  }, [user?.image]);
 
   const handleStart = useCallback(() => {
     setIsRunning(true);
@@ -449,7 +468,14 @@ export default function TestingScreen() {
       {/* User Info with Change Buttons */}
       {user && (
         <View style={styles.userInfo}>
-          <Image source={{ uri: user.image }} style={styles.userImage} />
+          <Image
+            source={{
+              uri:
+                userSignedImageUrl ||
+                "https://www.gravatar.com/avatar/?d=mp&f=y",
+            }}
+            style={styles.userImage}
+          />
           <Text style={styles.userName}>{user.name}</Text>
 
           <View style={styles.changeButtonsContainer}>

@@ -11,6 +11,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  extractUserPhotoObjectPath,
+  getSignedUserPhotoUrl,
+} from "../lib/user-photos";
 
 interface TestResult {
   userId: string;
@@ -43,7 +47,22 @@ export default function UserProfileScreen() {
   } = params;
   const [groupedResults, setGroupedResults] = useState<GroupedResults>({});
   const [imageError, setImageError] = useState(false);
+  const [signedImageUrl, setSignedImageUrl] = useState("");
   const defaultAvatarUrl = "https://www.gravatar.com/avatar/?d=mp&f=y";
+
+  useEffect(() => {
+    const run = async () => {
+      const raw = typeof userImage === "string" ? userImage : "";
+      const path = extractUserPhotoObjectPath(raw);
+      if (!path) {
+        setSignedImageUrl("");
+        return;
+      }
+      const url = await getSignedUserPhotoUrl(path);
+      setSignedImageUrl(url);
+    };
+    run();
+  }, [userImage]);
 
   useEffect(() => {
     const loadUserResults = async () => {
@@ -127,8 +146,8 @@ export default function UserProfileScreen() {
           <Image
             source={{
               uri:
-                !imageError && typeof userImage === "string" && userImage
-                  ? (userImage as string)
+                !imageError && signedImageUrl
+                  ? signedImageUrl
                   : defaultAvatarUrl,
             }}
             style={styles.profileImage}
