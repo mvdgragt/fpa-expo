@@ -1,4 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { router, useGlobalSearchParams } from "expo-router";
 import { useState } from "react";
@@ -152,6 +154,55 @@ export default function AddUserScreen() {
     }
   };
 
+  const uploadProfilePhoto = async (localUri: string, objectPath: string) => {
+    const extra = (Constants.expoConfig?.extra || {}) as {
+      SUPABASE_URL?: string;
+      SUPABASE_ANON_KEY?: string;
+    };
+    const supabaseUrl = extra.SUPABASE_URL;
+    const supabaseAnonKey = extra.SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error(
+        "Missing Supabase env. Set SUPABASE_URL and SUPABASE_ANON_KEY.",
+      );
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+    if (!accessToken) {
+      throw new Error("Not signed in. Please sign in again.");
+    }
+
+    const endpoint = `${supabaseUrl}/storage/v1/object/user-photos/${objectPath}`;
+    const fs: any = FileSystem as any;
+    const uploadRes = await FileSystem.uploadAsync(endpoint, localUri, {
+      httpMethod: "POST",
+      uploadType:
+        fs.FileSystemUploadType?.BINARY_CONTENT ??
+        fs.FileSystemUploadType?.BINARY ??
+        undefined,
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "image/jpeg",
+        "x-upsert": "true",
+      },
+    });
+
+    if (uploadRes.status < 200 || uploadRes.status >= 300) {
+      throw new Error(
+        uploadRes.body || `Upload failed with status ${uploadRes.status}`,
+      );
+    }
+
+    const { data } = supabase.storage
+      .from("user-photos")
+      .getPublicUrl(objectPath);
+    if (!data?.publicUrl)
+      throw new Error("Could not create public URL for uploaded photo");
+    return data.publicUrl;
+  };
+
   const showImageOptions = () => {
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -173,10 +224,34 @@ export default function AddUserScreen() {
     }
   };
 
-  const getDefaultAvatar = () => {
-    const gender = sex === "female" ? "women" : "men";
-    const id = Math.floor(Math.random() * 99) + 1;
-    return `https://randomuser.me/api/portraits/${gender}/${id}.jpg`;
+  const persistProfilePhoto = async (sourceUri: string, userIdHint: string) => {
+    const fs: any = FileSystem as any;
+    const documentDir =
+      (fs.documentDirectory as string | null | undefined) ??
+      (fs.cacheDirectory as string | null | undefined) ??
+      null;
+    const baseDir = documentDir ? `${documentDir}user-photos` : null;
+    try {
+      if (!baseDir) return sourceUri;
+      const dirInfo = await FileSystem.getInfoAsync(baseDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true });
+      }
+
+      const ext = (() => {
+        const match = sourceUri.match(/\.([a-zA-Z0-9]+)(\?.*)?$/);
+        const e = match?.[1]?.toLowerCase();
+        if (e && e.length <= 5) return e;
+        return "jpg";
+      })();
+
+      const fileName = `${userIdHint}-${Date.now()}.${ext}`;
+      const destUri = `${baseDir}/${fileName}`;
+      await FileSystem.copyAsync({ from: sourceUri, to: destUri });
+      return destUri;
+    } catch {
+      return sourceUri;
+    }
   };
 
   const handleAddUser = async () => {
@@ -211,7 +286,34 @@ export default function AddUserScreen() {
       return;
     }
 
-    const imageUrl = imageUri;
+    const userIdHint = `${firstName.trim()}-${lastName.trim()}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+    const persistedUri = await persistProfilePhoto(
+      imageUri,
+      userIdHint || "user",
+    );
+
+    let imageUrl = persistedUri;
+    try {
+      const ext = (() => {
+        const match = persistedUri.match(/\.([a-zA-Z0-9]+)(\?.*)?$/);
+        const e = match?.[1]?.toLowerCase();
+        if (e && e.length <= 5) return e;
+        return "jpg";
+      })();
+
+      const objectPath = `${session.clubId}/${userIdHint || "user"}-${Date.now()}.${ext}`;
+      imageUrl = await uploadProfilePhoto(persistedUri, objectPath);
+    } catch (e: any) {
+      console.error("Error uploading profile photo:", e);
+      Alert.alert(
+        "Upload failed",
+        "Could not upload the profile photo. Please try again.",
+      );
+      return;
+    }
 
     try {
       const { error } = await supabase.rpc("create_club_user", {

@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { router, useGlobalSearchParams } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   FlatList,
   Image,
   StyleSheet,
@@ -20,6 +21,10 @@ type UserType = {
   id: string;
   name: string;
   image: string;
+  firstName: string;
+  lastName: string;
+  dob: string;
+  sex: string;
 };
 
 export default function SelectUserScreen() {
@@ -28,9 +33,13 @@ export default function SelectUserScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [clubName, setClubName] = useState<string>("");
   const [clubLogoUrl, setClubLogoUrl] = useState<string | null>(null);
+  const [imageErrors, setImageErrors] = useState<Record<string, true>>({});
+  const [isEditMode, setIsEditMode] = useState(false);
   const { stationId, stationName, stationShortName } = params;
   const { setUser } = useSelectedUser();
   const insets = useSafeAreaInsets();
+
+  const defaultAvatarUrl = "https://www.gravatar.com/avatar/?d=mp&f=y";
 
   const adminPreview = params.adminPreview === "1";
   const [isAdmin, setIsAdmin] = useState(false);
@@ -40,11 +49,6 @@ export default function SelectUserScreen() {
     await clearClubSession();
     router.replace("/admin" as any);
   };
-
-  // Load users from storage on mount
-  useEffect(() => {
-    loadUsers();
-  }, []);
 
   useEffect(() => {
     const check = async () => {
@@ -58,13 +62,7 @@ export default function SelectUserScreen() {
     check();
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadUsers();
-    }, []),
-  );
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setIsLoading(true);
     try {
       const session = await getClubSession();
@@ -96,16 +94,32 @@ export default function SelectUserScreen() {
       const mapped: UserType[] = (data || []).map((u: any) => ({
         id: u.id,
         name: `${u.first_name} ${u.last_name}`,
-        image: u.image_url,
+        image: typeof u.image_url === "string" ? u.image_url.trim() : "",
+        firstName: typeof u.first_name === "string" ? u.first_name : "",
+        lastName: typeof u.last_name === "string" ? u.last_name : "",
+        dob: typeof u.dob === "string" ? u.dob : "",
+        sex: typeof u.sex === "string" ? u.sex : "",
       }));
       setUsers(mapped);
+      setImageErrors({});
     } catch (error) {
       console.error("Error loading users:", error);
       setUsers([]);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  // Load users from storage on mount
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUsers();
+    }, [loadUsers]),
+  );
 
   const handleUserSelect = useCallback(
     (selectedUser: UserType) => {
@@ -136,15 +150,175 @@ export default function SelectUserScreen() {
     });
   };
 
+  const handleDeleteUser = useCallback(
+    (u: UserType) => {
+      Alert.alert(
+        "Delete user",
+        `Are you sure you want to delete ${u.name}? This cannot be undone.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                const session = await getClubSession();
+                if (!session) {
+                  Alert.alert(
+                    "Error",
+                    "No active club session. Please login again.",
+                  );
+                  router.replace("/login");
+                  return;
+                }
+
+                const { error } = await supabase
+                  .from("club_users")
+                  .delete()
+                  .eq("id", u.id);
+
+                if (error) {
+                  console.error("Error deleting user:", error);
+                  Alert.alert(
+                    "Delete failed",
+                    error.message || "Could not delete the user.",
+                  );
+                  return;
+                }
+
+                await loadUsers();
+              } catch (e: any) {
+                console.error("Error deleting user:", e);
+                Alert.alert(
+                  "Delete failed",
+                  e?.message || "Could not delete the user.",
+                );
+              }
+            },
+          },
+        ],
+      );
+    },
+    [loadUsers],
+  );
+
+  const handleEditUser = useCallback(
+    (u: UserType) => {
+      router.push({
+        pathname: "/edit-user",
+        params: {
+          userId: u.id,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          dob: u.dob,
+          sex: u.sex,
+          imageUrl: u.image,
+          stationId,
+          stationName,
+          stationShortName,
+        },
+      });
+    },
+    [stationId, stationName, stationShortName],
+  );
+
+  const UserCard = ({
+    item,
+    editing,
+  }: {
+    item: UserType;
+    editing: boolean;
+  }) => {
+    const wiggle = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+      if (!editing) {
+        wiggle.stopAnimation();
+        wiggle.setValue(0);
+        return;
+      }
+
+      const anim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(wiggle, {
+            toValue: 1,
+            duration: 90,
+            useNativeDriver: true,
+          }),
+          Animated.timing(wiggle, {
+            toValue: 0,
+            duration: 90,
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+
+      anim.start();
+      return () => anim.stop();
+    }, [editing, wiggle]);
+
+    const rotate = wiggle.interpolate({
+      inputRange: [0, 1],
+      outputRange: ["-1.6deg", "1.6deg"],
+    });
+
+    return (
+      <TouchableOpacity
+        style={styles.userCard}
+        onPress={() => {
+          if (editing) return;
+          handleUserSelect(item);
+        }}
+        onLongPress={() => setIsEditMode(true)}
+        activeOpacity={0.7}
+      >
+        <Animated.View
+          style={{ alignItems: "center", transform: [{ rotate }] }}
+        >
+          <Image
+            key={`${item.id}:${item.image}`}
+            source={{
+              uri:
+                item.image && !imageErrors[item.id]
+                  ? item.image
+                  : defaultAvatarUrl,
+              cache: item.image ? "reload" : "default",
+            }}
+            style={styles.userImage}
+            onError={() =>
+              setImageErrors((prev) => ({
+                ...prev,
+                [item.id]: true,
+              }))
+            }
+          />
+          <Text style={styles.userName}>{item.name}</Text>
+        </Animated.View>
+
+        {editing ? (
+          <View style={styles.editActions}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.deleteButton]}
+              onPress={() => handleDeleteUser(item)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash" size={14} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.editButton]}
+              onPress={() => handleEditUser(item)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="create" size={14} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    );
+  };
+
   const renderUser = ({ item }: { item: UserType }) => (
-    <TouchableOpacity
-      style={styles.userCard}
-      onPress={() => handleUserSelect(item)}
-      activeOpacity={0.7}
-    >
-      <Image source={{ uri: item.image }} style={styles.userImage} />
-      <Text style={styles.userName}>{item.name}</Text>
-    </TouchableOpacity>
+    <UserCard item={item} editing={isEditMode} />
   );
 
   if (isLoading) {
@@ -157,6 +331,17 @@ export default function SelectUserScreen() {
 
   return (
     <View style={styles.container}>
+      {isEditMode ? (
+        <TouchableOpacity
+          style={[styles.doneButton, { top: insets.top + 8 }]}
+          onPress={() => setIsEditMode(false)}
+          activeOpacity={0.8}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={styles.doneButtonText}>Done</Text>
+        </TouchableOpacity>
+      ) : null}
+
       {adminPreview ? (
         <TouchableOpacity
           style={[styles.logoutButton, { top: insets.top + 8 }]}
@@ -237,6 +422,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f9fa",
     paddingTop: 60,
     paddingHorizontal: 16,
+  },
+  doneButton: {
+    position: "absolute",
+    top: 18,
+    left: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#007AFF",
+    zIndex: 12,
+  },
+  doneButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#fff",
   },
   logoutButton: {
     position: "absolute",
@@ -379,6 +579,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
+    overflow: "hidden",
+  },
+  editActions: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    right: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  actionButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteButton: {
+    backgroundColor: "#FF3B30",
+  },
+  editButton: {
+    backgroundColor: "#007AFF",
   },
   userImage: {
     width: 80,

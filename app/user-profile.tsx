@@ -42,6 +42,8 @@ export default function UserProfileScreen() {
     stationShortName,
   } = params;
   const [groupedResults, setGroupedResults] = useState<GroupedResults>({});
+  const [imageError, setImageError] = useState(false);
+  const defaultAvatarUrl = "https://www.gravatar.com/avatar/?d=mp&f=y";
 
   useEffect(() => {
     const loadUserResults = async () => {
@@ -123,8 +125,14 @@ export default function UserProfileScreen() {
       <ScrollView style={styles.container}>
         <View style={styles.header}>
           <Image
-            source={{ uri: userImage as string }}
+            source={{
+              uri:
+                !imageError && typeof userImage === "string" && userImage
+                  ? (userImage as string)
+                  : defaultAvatarUrl,
+            }}
             style={styles.profileImage}
+            onError={() => setImageError(true)}
           />
           <Text style={styles.userName}>{userName}</Text>
 

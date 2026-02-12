@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -29,6 +30,9 @@ import { supabase } from "../lib/supabase";
 export default function AdminScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
+  const [userImageErrors, setUserImageErrors] = useState<Record<string, true>>(
+    {},
+  );
   const colors = useMemo(() => {
     const dark = colorScheme === "dark";
     return {
@@ -1195,6 +1199,29 @@ export default function AdminScreen() {
                       selectedUserIds[item.id] && styles.cardSelected,
                     ]}
                   >
+                    <Image
+                      key={`${item.id}:${String(item.image_url || "")}`}
+                      source={{
+                        uri:
+                          !userImageErrors[item.id] &&
+                          typeof item.image_url === "string" &&
+                          item.image_url.trim()
+                            ? item.image_url.trim()
+                            : "https://www.gravatar.com/avatar/?d=mp&f=y",
+                        cache:
+                          typeof item.image_url === "string" &&
+                          item.image_url.trim()
+                            ? "reload"
+                            : "default",
+                      }}
+                      style={styles.userAvatar}
+                      onError={() =>
+                        setUserImageErrors((prev) => ({
+                          ...prev,
+                          [item.id]: true,
+                        }))
+                      }
+                    />
                     <View style={{ flex: 1 }}>
                       <View style={styles.userTitleRow}>
                         {selectionMode ? (
@@ -1634,9 +1661,16 @@ const createStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
       borderRadius: 14,
       padding: 14,
+      marginHorizontal: 16,
       marginBottom: 10,
       alignItems: "center",
       gap: 10,
+    },
+    userAvatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.surface2,
     },
     sectionTitle: {
       fontSize: 13,
