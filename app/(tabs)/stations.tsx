@@ -8,13 +8,15 @@ import {
   View,
 } from "react-native";
 import { testStations } from "../../constants/testStations";
+import { useSelectedUser } from "../../context/SelectedUserContext";
 
 export default function StationsScreen() {
   const params = useGlobalSearchParams();
   const returnToTesting = params.returnToTesting === "true";
+  const { user } = useSelectedUser();
 
   const handleStationSelect = (station: (typeof testStations)[0]) => {
-    if (returnToTesting) {
+    if (returnToTesting || user) {
       // Go directly to testing with the selected station
       router.push({
         pathname: "/(tabs)/testing",
@@ -60,7 +62,7 @@ export default function StationsScreen() {
         <Ionicons
           name={getCategoryIcon(item.category)}
           size={48}
-          color="#007AFF"
+          color="#ff7e21"
         />
       </View>
       <View style={styles.stationInfo}>
@@ -152,7 +154,7 @@ const styles = StyleSheet.create({
   },
   stationShortName: {
     fontSize: 14,
-    color: "#007AFF",
+    color: "#ff7e21",
     fontWeight: "600",
     marginBottom: 8,
   },

@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     marginBottom: 16,
     borderWidth: 4,
-    borderColor: "#007AFF",
+    borderColor: "#ff7e21",
   },
   userName: {
     fontSize: 28,
@@ -245,10 +245,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   testButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
+    marginTop: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -284,7 +285,7 @@ const styles = StyleSheet.create({
   stationName: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#007AFF",
+    color: "#ff7e21",
     marginBottom: 12,
   },
   resultRow: {

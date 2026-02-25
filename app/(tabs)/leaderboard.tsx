@@ -169,7 +169,7 @@ export default function ResultsScreen() {
         Object.entries(groupedResults).map(([stationId, data]) => (
           <View key={stationId} style={styles.stationSection}>
             <View style={styles.stationHeader}>
-              <Ionicons name="fitness" size={24} color="#007AFF" />
+              <Ionicons name="fitness" size={24} color="#ff7e21" />
               <Text style={styles.stationTitle}>{data.stationShortName}</Text>
             </View>
 
@@ -254,12 +254,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingBottom: 12,
     borderBottomWidth: 2,
-    borderBottomColor: "#007AFF",
+    borderBottomColor: "#ff7e21",
   },
   stationTitle: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#007AFF",
+    color: "#ff7e21",
   },
   resultCard: {
     backgroundColor: "#f8f9fa",

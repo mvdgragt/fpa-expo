@@ -448,7 +448,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     zIndex: 12,
   },
   doneButtonText: {
@@ -514,7 +514,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   stationBadge: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   addButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     borderRadius: 12,
     padding: 14,
     marginBottom: 20,
@@ -618,7 +618,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FF3B30",
   },
   editButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
   },
   userImage: {
     width: 80,

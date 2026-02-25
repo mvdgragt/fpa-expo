@@ -20,6 +20,7 @@ interface BleContextType {
   hubDistance: number | null;
   remoteDistance: number | null;
   connectToESP32: () => Promise<void>;
+  writeIndicatorCommand: (cmd: "G" | "R") => Promise<void>;
 }
 
 const BleContext = createContext<BleContextType | undefined>(undefined);
@@ -29,6 +30,7 @@ const bleManager = new BleManager();
 const ESP32_NAME = "FPA HUB";
 const SERVICE_UUID = "12345678-1234-1234-1234-123456789abc";
 const CHARACTERISTIC_UUID = "87654321-4321-4321-4321-cba987654321";
+const INDICATOR_CHARACTERISTIC_UUID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 export const BleProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -45,6 +47,23 @@ export const BleProvider: React.FC<{ children: React.ReactNode }> = ({
   const lastDistanceValue = useRef<number | null>(null);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const writeIndicatorCommand = useCallback(
+    async (cmd: "G" | "R") => {
+      if (!connectedDevice) return;
+      try {
+        const valueBase64 = Buffer.from(cmd, "utf-8").toString("base64");
+        await connectedDevice.writeCharacteristicWithResponseForService(
+          SERVICE_UUID,
+          INDICATOR_CHARACTERISTIC_UUID,
+          valueBase64,
+        );
+      } catch (e) {
+        if (__DEV__) console.warn("[BLE] writeIndicatorCommand failed", e);
+      }
+    },
+    [connectedDevice],
+  );
 
   const stopScan = useCallback(() => {
     try {
@@ -286,6 +305,7 @@ export const BleProvider: React.FC<{ children: React.ReactNode }> = ({
         hubDistance,
         remoteDistance,
         connectToESP32,
+        writeIndicatorCommand,
       }}
     >
       {children}

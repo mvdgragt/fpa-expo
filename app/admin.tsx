@@ -99,8 +99,8 @@ export default function AdminScreen() {
   const [clubModalVisible, setClubModalVisible] = useState(false);
   const [clubEditingId, setClubEditingId] = useState<string | null>(null);
   const [clubName, setClubName] = useState("");
-  const [clubCode, setClubCode] = useState("");
   const [clubLogoUri, setClubLogoUri] = useState<string | null>(null);
+  const [clubLogoBase64, setClubLogoBase64] = useState<string | null>(null);
 
   const [userModalVisible, setUserModalVisible] = useState(false);
   const [userEditingId, setUserEditingId] = useState<string | null>(null);
@@ -372,8 +372,8 @@ export default function AdminScreen() {
   const openCreateClub = () => {
     setClubEditingId(null);
     setClubName("");
-    setClubCode("");
     setClubLogoUri(null);
+    setClubLogoBase64(null);
     setClubModalVisible(true);
   };
 
@@ -385,8 +385,8 @@ export default function AdminScreen() {
   }) => {
     setClubEditingId(club.id);
     setClubName(club.name);
-    setClubCode(String(club.code_4 || "").trim());
     setClubLogoUri(null);
+    setClubLogoBase64(null);
     setClubModalVisible(true);
   };
 
@@ -400,74 +400,130 @@ export default function AdminScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.9,
+      base64: true,
     });
     if (!result.canceled && result.assets[0]) {
       setClubLogoUri(result.assets[0].uri);
+      setClubLogoBase64(result.assets[0].base64 || null);
     }
   };
 
+  const generateUniqueClubCode4 = async () => {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const code = String(Math.floor(1000 + Math.random() * 9000));
+      const { data: existing, error } = await supabase
+        .from("clubs")
+        .select("id")
+        .eq("code_4", code)
+        .maybeSingle();
+      if (error) throw error;
+      if (!existing) return code;
+    }
+    throw new Error("Could not generate a unique club code. Please try again.");
+  };
+
   const uploadLogoIfNeeded = async (clubId: string) => {
-    if (!clubLogoUri) return null;
-    const res = await fetch(clubLogoUri);
-    const blob = await res.blob();
-    const objectPath = `${clubId}/logo.png`;
+    if (!clubLogoUri && !clubLogoBase64) return null;
 
-    const { error: uploadError } = await supabase.storage
-      .from("club-logos")
-      .upload(objectPath, blob, {
-        upsert: true,
-        contentType: blob.type || "image/png",
-      });
+    const base64 = clubLogoBase64;
+    if (!base64) {
+      throw new Error(
+        "Could not read logo image data. Please pick the logo again.",
+      );
+    }
 
-    if (uploadError) throw uploadError;
-    return objectPath;
+    const contentType = (() => {
+      const match = (clubLogoUri || "").match(/\.([a-zA-Z0-9]+)(\?.*)?$/);
+      const ext = match?.[1]?.toLowerCase();
+      if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+      return "image/png";
+    })();
+
+    const extra = (Constants.expoConfig?.extra ||
+      (Constants as any)?.manifest?.extra ||
+      {}) as unknown as {
+      SUPABASE_URL?: string;
+      SUPABASE_ANON_KEY?: string;
+    };
+    const supabaseUrl = extra.SUPABASE_URL;
+    const supabaseAnonKey = extra.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error(
+        "Missing Supabase env (SUPABASE_URL / SUPABASE_ANON_KEY). Logo upload requires the upload-club-logo edge function.",
+      );
+    }
+
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const accessToken =
+      refreshed?.session?.access_token || session?.access_token || "";
+    if (!accessToken) {
+      throw new Error("Not signed in. Please sign in again.");
+    }
+
+    const fnRes = await fetch(`${supabaseUrl}/functions/v1/upload-club-logo`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        club_id: clubId,
+        base64,
+        content_type: contentType,
+      }),
+    });
+
+    let json: any = null;
+    try {
+      json = await fnRes.json();
+    } catch {
+      // ignore
+    }
+
+    if (!fnRes.ok || !json?.ok || !json?.path) {
+      const msg = json?.error || json?.message || `HTTP ${fnRes.status}`;
+      throw new Error(
+        `Logo upload failed via edge function: ${msg}. Ensure upload-club-logo is deployed and your user is an admin.`,
+      );
+    }
+
+    return String(json.path);
   };
 
   const saveClub = async () => {
     const name = clubName.trim();
-    const code = clubCode.trim();
     if (!name) {
       Alert.alert("Error", "Club name is required");
-      return;
-    }
-    if (!/^\d{4}$/.test(code)) {
-      Alert.alert("Error", "Club code must be exactly 4 digits");
-      return;
-    }
-
-    try {
-      const { data: existing, error: existingError } = await supabase
-        .from("clubs")
-        .select("id,name")
-        .eq("code_4", code)
-        .maybeSingle();
-
-      if (existingError) throw existingError;
-      if (existing && existing.id !== clubEditingId) {
-        Alert.alert(
-          "Code already in use",
-          `Club code ${code} is already used by “${existing.name}”. Choose another code.`,
-        );
-        return;
-      }
-    } catch (e: any) {
-      console.error(e);
-      Alert.alert("Error", e?.message || "Could not validate club code");
       return;
     }
 
     setIsLoading(true);
     try {
       if (!clubEditingId) {
+        const code_4 = await generateUniqueClubCode4();
         const { data, error } = await supabase
           .from("clubs")
-          .insert({ name, code_4: code })
+          .insert({ name, code_4 })
           .select("id")
           .single();
         if (error) throw error;
 
         const clubId = data.id as string;
-        const logoPath = await uploadLogoIfNeeded(clubId);
+        let logoPath: string | null = null;
+        try {
+          logoPath = await uploadLogoIfNeeded(clubId);
+        } catch (e: any) {
+          console.error(e);
+          Alert.alert(
+            "Logo upload failed",
+            "Club was created, but the logo could not be uploaded. (Permissions)",
+          );
+        }
         if (logoPath) {
           const { error: updErr } = await supabase
             .from("clubs")
@@ -476,8 +532,17 @@ export default function AdminScreen() {
           if (updErr) throw updErr;
         }
       } else {
-        const logoPath = await uploadLogoIfNeeded(clubEditingId);
-        const payload: any = { name, code_4: code };
+        let logoPath: string | null = null;
+        try {
+          logoPath = await uploadLogoIfNeeded(clubEditingId);
+        } catch (e: any) {
+          console.error(e);
+          Alert.alert(
+            "Logo upload failed",
+            "Club was updated, but the logo could not be uploaded. (Permissions)",
+          );
+        }
+        const payload: any = { name };
         if (logoPath) payload.logo_path = logoPath;
         const { error } = await supabase
           .from("clubs")
@@ -491,16 +556,7 @@ export default function AdminScreen() {
     } catch (e: any) {
       console.error(e);
       const msg = String(e?.message || "");
-      const isDuplicateCode =
-        e?.code === "23505" || msg.includes("clubs_code_4_key");
-      if (isDuplicateCode) {
-        Alert.alert(
-          "Code already in use",
-          "That 4-digit club code is already taken. Please choose a different one.",
-        );
-      } else {
-        Alert.alert("Error", e?.message || "Could not save club");
-      }
+      Alert.alert("Error", msg || "Could not save club");
     } finally {
       setIsLoading(false);
     }
@@ -1020,9 +1076,6 @@ export default function AdminScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardTitle}>{item.name}</Text>
                     <Text style={styles.cardSub}>
-                      Code: {String(item.code_4).trim()}
-                    </Text>
-                    <Text style={styles.cardSub}>
                       Logo: {item.logo_path || "-"}
                     </Text>
                   </View>
@@ -1357,17 +1410,6 @@ export default function AdminScreen() {
                     placeholderTextColor={colors.placeholder}
                     value={clubName}
                     onChangeText={setClubName}
-                  />
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="4-digit code"
-                    placeholderTextColor={colors.placeholder}
-                    value={clubCode}
-                    onChangeText={(t) =>
-                      setClubCode(t.replace(/\D/g, "").slice(0, 4))
-                    }
-                    keyboardType="number-pad"
-                    maxLength={4}
                   />
 
                   <TouchableOpacity

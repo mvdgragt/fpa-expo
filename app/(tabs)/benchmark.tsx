@@ -263,7 +263,7 @@ export default function BenchmarkScreen() {
             onPress={() => setFilterModalVisible(true)}
             activeOpacity={0.8}
           >
-            <Ionicons name="filter" size={20} color="#007AFF" />
+            <Ionicons name="filter" size={20} color="#ff7e21" />
             {activeFiltersCount > 0 && (
               <View style={styles.filterBadge}>
                 <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
@@ -289,7 +289,7 @@ export default function BenchmarkScreen() {
                 {availableStations.find((s) => s.id === selectedStation)?.name}
               </Text>
               <TouchableOpacity onPress={() => handleStationFilter(null)}>
-                <Ionicons name="close-circle" size={18} color="#007AFF" />
+                <Ionicons name="close-circle" size={18} color="#ff7e21" />
               </TouchableOpacity>
             </View>
           )}
@@ -299,7 +299,7 @@ export default function BenchmarkScreen() {
                 {availableUsers.find((u) => u.id === selectedUser)?.name}
               </Text>
               <TouchableOpacity onPress={() => handleUserFilter(null)}>
-                <Ionicons name="close-circle" size={18} color="#007AFF" />
+                <Ionicons name="close-circle" size={18} color="#ff7e21" />
               </TouchableOpacity>
             </View>
           )}
@@ -325,10 +325,13 @@ export default function BenchmarkScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          filteredBenchmarks.map((station) => (
-            <View key={station.stationId} style={styles.stationCard}>
+          filteredBenchmarks.map((station, stationIndex) => (
+            <View
+              key={`${station.stationId}-${stationIndex}`}
+              style={styles.stationCard}
+            >
               <View style={styles.stationHeader}>
-                <Ionicons name="fitness" size={24} color="#007AFF" />
+                <Ionicons name="fitness" size={24} color="#ff7e21" />
                 <Text style={styles.stationName}>
                   {station.stationShortName}
                 </Text>
@@ -420,7 +423,7 @@ export default function BenchmarkScreen() {
                   All Stations
                 </Text>
                 {selectedStation === null && (
-                  <Ionicons name="checkmark" size={24} color="#007AFF" />
+                  <Ionicons name="checkmark" size={24} color="#ff7e21" />
                 )}
               </TouchableOpacity>
               {availableStations.map((station) => (
@@ -443,7 +446,7 @@ export default function BenchmarkScreen() {
                     {station.name}
                   </Text>
                   {selectedStation === station.id && (
-                    <Ionicons name="checkmark" size={24} color="#007AFF" />
+                    <Ionicons name="checkmark" size={24} color="#ff7e21" />
                   )}
                 </TouchableOpacity>
               ))}
@@ -468,7 +471,7 @@ export default function BenchmarkScreen() {
                   All Users
                 </Text>
                 {selectedUser === null && (
-                  <Ionicons name="checkmark" size={24} color="#007AFF" />
+                  <Ionicons name="checkmark" size={24} color="#ff7e21" />
                 )}
               </TouchableOpacity>
               {availableUsers.map((user) => (
@@ -490,7 +493,7 @@ export default function BenchmarkScreen() {
                     {user.name}
                   </Text>
                   {selectedUser === user.id && (
-                    <Ionicons name="checkmark" size={24} color="#007AFF" />
+                    <Ionicons name="checkmark" size={24} color="#ff7e21" />
                   )}
                 </TouchableOpacity>
               ))}
@@ -574,7 +577,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#007AFF",
+    borderColor: "#ff7e21",
   },
   filterBadge: {
     position: "absolute",
@@ -615,7 +618,7 @@ const styles = StyleSheet.create({
   filterChip: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#E3F2FD",
+    backgroundColor: "#ffecdf",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -623,7 +626,7 @@ const styles = StyleSheet.create({
   },
   filterChipText: {
     fontSize: 14,
-    color: "#007AFF",
+    color: "#ff7e21",
     fontWeight: "500",
   },
   scrollView: {
@@ -645,7 +648,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   clearFiltersButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
@@ -742,7 +745,7 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontWeight: "bold",
-    color: "#007AFF",
+    color: "#ff7e21",
     fontVariant: ["tabular-nums"],
   },
   modalOverlay: {
@@ -792,9 +795,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8f9fa",
   },
   filterOptionSelected: {
-    backgroundColor: "#E3F2FD",
+    backgroundColor: "#ffecdf",
     borderWidth: 2,
-    borderColor: "#007AFF",
+    borderColor: "#ff7e21",
   },
   filterOptionText: {
     fontSize: 16,
@@ -802,7 +805,7 @@ const styles = StyleSheet.create({
   },
   filterOptionTextSelected: {
     fontWeight: "600",
-    color: "#007AFF",
+    color: "#ff7e21",
   },
   modalFooter: {
     flexDirection: "row",
@@ -824,7 +827,7 @@ const styles = StyleSheet.create({
   },
   applyButton: {
     flex: 1,
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: "center",

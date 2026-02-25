@@ -657,7 +657,7 @@ const styles = StyleSheet.create({
     height: 110,
     borderRadius: 55,
     borderWidth: 3,
-    borderColor: "#007AFF",
+    borderColor: "#ff7e21",
   },
   avatarPlaceholder: {
     width: 110,
@@ -674,7 +674,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 2,
     right: 2,
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     width: 30,
     height: 30,
     borderRadius: 15,
@@ -866,8 +866,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   sexButtonActive: {
-    backgroundColor: "#007AFF",
-    borderColor: "#007AFF",
+    backgroundColor: "#ff7e21",
+    borderColor: "#ff7e21",
   },
   sexButtonText: {
     fontSize: 16,
@@ -878,7 +878,7 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   addButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     borderRadius: 12,
     padding: 16,
     alignItems: "center",

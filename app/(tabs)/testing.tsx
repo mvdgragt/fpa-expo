@@ -15,6 +15,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useBle } from "../../context/BLEContext"; // Import the BLE hook
 import { useSelectedUser } from "../../context/SelectedUserContext";
+import { getClubSession } from "../../lib/session";
+import { supabase } from "../../lib/supabase";
 import {
   extractUserPhotoObjectPath,
   getSignedUserPhotoUrl,
@@ -29,6 +31,7 @@ export default function TestingScreen() {
     distance,
     hubDistance,
     remoteDistance,
+    writeIndicatorCommand,
   } = useBle(); // Use global BLE state
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
@@ -37,13 +40,19 @@ export default function TestingScreen() {
   const [isFinished, setIsFinished] = useState(false);
   const [lapTime, setLapTime] = useState<number | null>(null);
   const [userSignedImageUrl, setUserSignedImageUrl] = useState<string>("");
+  const [selectedFoot, setSelectedFoot] = useState<"left" | "right" | null>(
+    null,
+  );
 
   const { stationId, stationName, stationShortName } = params;
+  const isFiveOhFiveTest = stationId === "5-0-5-test";
   const startTimeRef = useRef<number | null>(null);
   const wasReady = useRef(false);
   const stopGateReady = useRef(false); // true once remote sensor sees > 150 (no one there)
   const stopPassCount = useRef(0);
   const stopGateArmed = useRef(false);
+  const lastIndicatorRef = useRef<"G" | "R" | "">("");
+  const manualIndicatorOverrideUntilRef = useRef<number>(0);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -65,11 +74,19 @@ export default function TestingScreen() {
   }, [user?.image]);
 
   const handleStart = useCallback(() => {
+    if (isFiveOhFiveTest && !selectedFoot) {
+      Alert.alert("Select foot", "Please choose left or right foot to start.");
+      return;
+    }
     setIsRunning(true);
     setHasStarted(true);
     startTimeRef.current = Date.now();
     stopGateReady.current = false;
-  }, []);
+    if (isFiveOhFiveTest) {
+      writeIndicatorCommand("R");
+      lastIndicatorRef.current = "R";
+    }
+  }, [isFiveOhFiveTest, selectedFoot, writeIndicatorCommand]);
 
   const handleStop = useCallback(async () => {
     const elapsedMs = startTimeRef.current
@@ -90,7 +107,29 @@ export default function TestingScreen() {
         stationShortName: stationShortName as string,
         time: finalTime,
         timestamp: new Date().toISOString(),
+        ...(isFiveOhFiveTest && selectedFoot ? { foot: selectedFoot } : {}),
       };
+
+      try {
+        const session = await getClubSession();
+        if (session?.clubId && user?.id) {
+          const { error } = await supabase.from("test_results").insert({
+            club_id: session.clubId,
+            user_id: user.id,
+            station_id: String(result.stationId || ""),
+            station_name: String(result.stationName || ""),
+            station_short_name: String(result.stationShortName || ""),
+            time_seconds: Number(result.time),
+            tested_at: result.timestamp,
+          });
+          if (error) {
+            if (__DEV__)
+              console.warn("[Sync] test_results insert failed", error);
+          }
+        }
+      } catch (e) {
+        if (__DEV__) console.warn("[Sync] test_results insert failed", e);
+      }
 
       const savedResults = await AsyncStorage.getItem("testResults");
       const results = savedResults ? JSON.parse(savedResults) : [];
@@ -104,6 +143,8 @@ export default function TestingScreen() {
     stationId,
     stationName,
     stationShortName,
+    isFiveOhFiveTest,
+    selectedFoot,
     time,
     user?.id,
     user?.image,
@@ -132,6 +173,10 @@ export default function TestingScreen() {
         setButtonText("ready");
       } else if (wasReady.current) {
         // Was ready, now moved away → auto-start timer
+        if (isFiveOhFiveTest && !selectedFoot) {
+          setButtonText("ready");
+          return;
+        }
         wasReady.current = false;
         handleStart();
         setButtonText("running");
@@ -174,7 +219,42 @@ export default function TestingScreen() {
     isRunning,
     isRemoteStopStation,
     isFiveTenFive,
+    isFiveOhFiveTest,
+    selectedFoot,
     time,
+  ]);
+
+  // External indicator: for 5-0-5-test only
+  // - Green when the UI is READY and BLE is connected
+  // - Red as soon as the timer starts (handled in handleStart)
+  // - Stays green when waiting (no "off" command)
+  useEffect(() => {
+    if (!isFiveOhFiveTest) return;
+
+    const bleReady = !!connectedDevice && !isConnecting;
+    if (Date.now() < manualIndicatorOverrideUntilRef.current) return;
+    const shouldBeGreen =
+      bleReady &&
+      !isRunning &&
+      !hasStarted &&
+      !isFinished &&
+      (buttonText === "ready" || buttonText === "waiting");
+
+    if (!shouldBeGreen) return;
+
+    if (lastIndicatorRef.current === "") {
+      writeIndicatorCommand("G");
+      lastIndicatorRef.current = "G";
+    }
+  }, [
+    buttonText,
+    connectedDevice,
+    hasStarted,
+    isConnecting,
+    isFinished,
+    isFiveOhFiveTest,
+    isRunning,
+    writeIndicatorCommand,
   ]);
 
   // STOP gate logic — remote sensor (second ESP32) for stations that stop remotely
@@ -205,11 +285,13 @@ export default function TestingScreen() {
       setHasStarted(false);
       setIsFinished(false);
       setLapTime(null);
+      setSelectedFoot(null);
       startTimeRef.current = null;
       wasReady.current = false;
       stopGateReady.current = false;
       stopPassCount.current = 0;
       stopGateArmed.current = false;
+      lastIndicatorRef.current = "";
 
       Animated.sequence([
         Animated.parallel([
@@ -258,11 +340,13 @@ export default function TestingScreen() {
     setHasStarted(false);
     setIsFinished(false);
     setLapTime(null);
+    setSelectedFoot(null);
     startTimeRef.current = null;
     wasReady.current = false;
     stopGateReady.current = false;
     stopPassCount.current = 0;
     stopGateArmed.current = false;
+    lastIndicatorRef.current = "";
   };
 
   const handleChangeUser = () => {
@@ -334,7 +418,7 @@ export default function TestingScreen() {
               <Ionicons
                 name="bluetooth"
                 size={32}
-                color="#007AFF"
+                color="#ff7e21"
                 style={{ marginBottom: 10 }}
               />
               <Text style={styles.modalText}>Connecting to FPA HUB</Text>
@@ -355,7 +439,7 @@ export default function TestingScreen() {
         )}
 
         <View style={styles.setupContainer}>
-          <Ionicons name="timer-outline" size={80} color="#007AFF" />
+          <Ionicons name="timer-outline" size={80} color="#ff7e21" />
           <Text style={styles.setupTitle}>Ready to Test?</Text>
           <Text style={styles.setupSubtitle}>
             Select a station and user to begin testing
@@ -429,7 +513,7 @@ export default function TestingScreen() {
             <Ionicons
               name="bluetooth"
               size={32}
-              color="#007AFF"
+              color="#ff7e21"
               style={{ marginBottom: 10 }}
             />
             <Text style={styles.modalText}>Connecting to FPA HUB...</Text>
@@ -491,7 +575,7 @@ export default function TestingScreen() {
               <Ionicons
                 name="swap-horizontal"
                 size={20}
-                color={isRunning ? "#999" : "#007AFF"}
+                color={isRunning ? "#999" : "#ff7e21"}
               />
               <Text
                 style={[
@@ -515,7 +599,7 @@ export default function TestingScreen() {
               <Ionicons
                 name="location"
                 size={20}
-                color={isRunning ? "#999" : "#007AFF"}
+                color={isRunning ? "#999" : "#ff7e21"}
               />
               <Text
                 style={[
@@ -547,12 +631,70 @@ export default function TestingScreen() {
       </View>
 
       {/* Timer Display */}
-      <View style={styles.timerContainer}>
-        <Text style={styles.timerText}>{formatTime(time)}</Text>
+      <View
+        style={[
+          styles.timerContainer,
+          isFiveOhFiveTest && styles.timerContainerCompact,
+        ]}
+      >
+        <Text
+          style={[
+            styles.timerText,
+            isFiveOhFiveTest && styles.timerTextCompact,
+          ]}
+        >
+          {formatTime(time)}
+        </Text>
         {isFiveTenFive && lapTime !== null ? (
           <Text style={styles.lapText}>Lap: {formatTime(lapTime)}</Text>
         ) : null}
       </View>
+
+      {/* 5-0-5 foot selection */}
+      {isFiveOhFiveTest && !hasStarted && !isFinished ? (
+        <View style={styles.footSelectionContainer}>
+          <Text style={styles.footSelectionTitle}>Foot</Text>
+          <View style={styles.footSelectionButtons}>
+            <TouchableOpacity
+              style={[
+                styles.footSelectionButton,
+                selectedFoot === "left" && styles.footSelectionButtonSelected,
+              ]}
+              onPress={() => setSelectedFoot("left")}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.footSelectionButtonText,
+                  selectedFoot === "left" &&
+                    styles.footSelectionButtonTextSelected,
+                ]}
+              >
+                Left
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.footSelectionButton,
+                selectedFoot === "right" && styles.footSelectionButtonSelected,
+              ]}
+              onPress={() => setSelectedFoot("right")}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.footSelectionButtonText,
+                  selectedFoot === "right" &&
+                    styles.footSelectionButtonTextSelected,
+                ]}
+              >
+                Right
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
 
       {/* Control Buttons */}
       {isFinished ? (
@@ -583,10 +725,13 @@ export default function TestingScreen() {
                 styles.button,
                 styles.startButton,
                 buttonText !== "ready" && styles.startButtonDisabled,
+                isFiveOhFiveTest && !selectedFoot && styles.startButtonDisabled,
               ]}
               onPress={handleStart}
               activeOpacity={0.8}
-              disabled={buttonText !== "ready"}
+              disabled={
+                buttonText !== "ready" || (isFiveOhFiveTest && !selectedFoot)
+              }
             >
               <Text style={styles.buttonText}>
                 {buttonText.charAt(0).toUpperCase() + buttonText.slice(1)}
@@ -676,22 +821,22 @@ const styles = StyleSheet.create({
   connectedPill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#e8f5e9",
+    backgroundColor: "#ffecdf",
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#c8e6c9",
+    borderColor: "#ff7e21",
   },
   statusDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#4CAF50",
+    backgroundColor: "#ff7e21",
     marginRight: 6,
   },
   connectedPillText: {
-    color: "#2e7d32",
+    color: "#ff7e21",
     fontSize: 12,
     fontWeight: "600",
     textTransform: "uppercase",
@@ -723,7 +868,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   setupButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     borderRadius: 16,
     padding: 20,
     flexDirection: "row",
@@ -752,7 +897,7 @@ const styles = StyleSheet.create({
     color: "#999",
   },
   selectedBadge: {
-    backgroundColor: "#E8F5E9",
+    backgroundColor: "#ffecdf",
     borderRadius: 16,
     padding: 20,
     flexDirection: "row",
@@ -760,10 +905,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 12,
     borderWidth: 2,
-    borderColor: "#4CAF50",
+    borderColor: "#ff7e21",
   },
   selectedBadgeText: {
-    color: "#2E7D32",
+    color: "#ff7e21",
     fontSize: 18,
     fontWeight: "600",
   },
@@ -777,13 +922,11 @@ const styles = StyleSheet.create({
   stationBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 25,
-    marginBottom: 30,
-    gap: 8,
-    marginTop: 5,
+    marginVertical: 12,
   },
   stationBadgeText: {
     color: "#fff",
@@ -800,7 +943,7 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     marginBottom: 12,
     borderWidth: 4,
-    borderColor: "#007AFF",
+    borderColor: "#ff7e21",
   },
   userName: {
     fontSize: 24,
@@ -821,7 +964,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     borderWidth: 2,
-    borderColor: "#007AFF",
+    borderColor: "#ff7e21",
   },
   changeButtonDisabled: {
     backgroundColor: "#f0f0f0",
@@ -829,7 +972,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   changeButtonText: {
-    color: "#007AFF",
+    color: "#ff7e21",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -857,7 +1000,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 20,
     padding: 40,
-    marginBottom: 40,
+    marginBottom: 20,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -869,16 +1012,117 @@ const styles = StyleSheet.create({
     minWidth: 300,
     alignItems: "center",
   },
+  timerContainerCompact: {
+    padding: 24,
+    marginBottom: 12,
+    minWidth: 0,
+    width: "100%",
+    maxWidth: 400,
+  },
+  indicatorTestContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    width: "100%",
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
+  indicatorTestTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 10,
+  },
+  indicatorTestButtons: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  indicatorTestButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  indicatorGreenButton: {
+    backgroundColor: "#2ecc71",
+  },
+  indicatorRedButton: {
+    backgroundColor: "#e74c3c",
+  },
+  indicatorTestButtonDisabled: {
+    opacity: 0.4,
+  },
+  indicatorTestButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  indicatorTestHint: {
+    marginTop: 8,
+    color: "#666",
+    fontSize: 12,
+  },
+  footSelectionContainer: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  footSelectionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1a1a1a",
+    marginBottom: 10,
+  },
+  footSelectionButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  footSelectionButton: {
+    flex: 1,
+    borderWidth: 2,
+    borderColor: "#ddd",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f8f9fa",
+  },
+  footSelectionButtonSelected: {
+    borderColor: "#ff7e21",
+    backgroundColor: "#fff1e8",
+  },
+  footSelectionButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#333",
+  },
+  footSelectionButtonTextSelected: {
+    color: "#ff7e21",
+  },
   timerText: {
     fontSize: 64,
     fontWeight: "bold",
     color: "#1a1a1a",
   },
+  timerTextCompact: {
+    fontSize: 52,
+  },
   lapText: {
     marginTop: 12,
     fontSize: 18,
     fontWeight: "700",
-    color: "#007AFF",
+    color: "#ff7e21",
   },
   finishedButtonsContainer: {
     flexDirection: "row",
@@ -889,7 +1133,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     width: "100%",
-    marginTop: 20,
+    marginTop: 12,
   },
   finishedButton: {
     flex: 1,
@@ -900,12 +1144,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   button: {
-    paddingVertical: 20,
-    paddingHorizontal: 40,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 140,
+    minWidth: 120,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,

@@ -401,7 +401,7 @@ export default function EditUserScreen() {
             onPress={() => router.back()}
             activeOpacity={0.8}
           >
-            <Ionicons name="arrow-back" size={20} color="#007AFF" />
+            <Ionicons name="arrow-back" size={20} color="#ff7e21" />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Edit User</Text>
@@ -659,7 +659,7 @@ const styles = StyleSheet.create({
     borderColor: "#e0e0e0",
   },
   backText: {
-    color: "#007AFF",
+    color: "#ff7e21",
     fontSize: 13,
     fontWeight: "700",
   },
@@ -681,7 +681,7 @@ const styles = StyleSheet.create({
   },
   imagePickerText: {
     marginTop: 10,
-    color: "#007AFF",
+    color: "#ff7e21",
     fontWeight: "700",
   },
   label: {
@@ -735,15 +735,15 @@ const styles = StyleSheet.create({
     color: "#666",
   },
   sexActive: {
-    borderColor: "#007AFF",
-    backgroundColor: "#eaf2ff",
+    borderColor: "#ff7e21",
+    backgroundColor: "#fff1e8",
   },
   sexActiveText: {
-    color: "#007AFF",
+    color: "#ff7e21",
   },
   saveButton: {
     marginTop: 22,
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
@@ -801,7 +801,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   pickerItemActive: {
-    backgroundColor: "#eaf2ff",
+    backgroundColor: "#fff1e8",
   },
   pickerItemText: {
     fontSize: 14,
@@ -809,7 +809,7 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   pickerItemTextActive: {
-    color: "#007AFF",
+    color: "#ff7e21",
   },
   modalActions: {
     flexDirection: "row",
@@ -824,7 +824,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalButtonPrimary: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#ff7e21",
   },
   modalButtonText: {
     fontSize: 15,
