@@ -75,6 +75,7 @@ export default function AdminScreen() {
       club_id: string;
       first_name: string;
       last_name: string;
+      email: string | null;
       dob: string | null;
       sex: string | null;
       image_url: string | null;
@@ -99,6 +100,7 @@ export default function AdminScreen() {
   const [clubModalVisible, setClubModalVisible] = useState(false);
   const [clubEditingId, setClubEditingId] = useState<string | null>(null);
   const [clubName, setClubName] = useState("");
+  const [clubCode, setClubCode] = useState("");
   const [clubLogoUri, setClubLogoUri] = useState<string | null>(null);
   const [clubLogoBase64, setClubLogoBase64] = useState<string | null>(null);
 
@@ -106,6 +108,7 @@ export default function AdminScreen() {
   const [userEditingId, setUserEditingId] = useState<string | null>(null);
   const [userFirstName, setUserFirstName] = useState("");
   const [userLastName, setUserLastName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
   const [userDob, setUserDob] = useState<string>("");
   const [userSex, setUserSex] = useState<string>("");
 
@@ -208,14 +211,24 @@ export default function AdminScreen() {
   }, []);
 
   const loadUsers = useCallback(async () => {
-    const { data, error } = await supabase
+    let result = await supabase
       .from("club_users")
-      .select("id,club_id,first_name,last_name,dob,sex,image_url,created_at")
+      .select(
+        "id,club_id,first_name,last_name,email,dob,sex,image_url,created_at",
+      )
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    // If email column doesn't exist yet (migration pending), fall back without it
+    if (result.error) {
+      result = (await supabase
+        .from("club_users")
+        .select("id,club_id,first_name,last_name,dob,sex,image_url,created_at")
+        .order("created_at", { ascending: false })) as any;
+    }
 
-    const rows = (((data || []) as any) || []) as any[];
+    if (result.error) throw result.error;
+
+    const rows = (((result.data || []) as any) || []) as any[];
     setUsers(rows);
     try {
       const entries = await Promise.all(
@@ -372,6 +385,7 @@ export default function AdminScreen() {
   const openCreateClub = () => {
     setClubEditingId(null);
     setClubName("");
+    setClubCode("");
     setClubLogoUri(null);
     setClubLogoBase64(null);
     setClubModalVisible(true);
@@ -385,6 +399,7 @@ export default function AdminScreen() {
   }) => {
     setClubEditingId(club.id);
     setClubName(club.name);
+    setClubCode(String(club.code_4 || "").toUpperCase());
     setClubLogoUri(null);
     setClubLogoBase64(null);
     setClubModalVisible(true);
@@ -408,9 +423,14 @@ export default function AdminScreen() {
     }
   };
 
-  const generateUniqueClubCode4 = async () => {
+  const generateUniqueClubCode = async () => {
+    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     for (let attempt = 0; attempt < 30; attempt++) {
-      const code = String(Math.floor(1000 + Math.random() * 9000));
+      const digits = String(Math.floor(1000 + Math.random() * 9000));
+      const suffix =
+        letters[Math.floor(Math.random() * letters.length)] +
+        letters[Math.floor(Math.random() * letters.length)];
+      const code = digits + suffix;
       const { data: existing, error } = await supabase
         .from("clubs")
         .select("id")
@@ -505,7 +525,8 @@ export default function AdminScreen() {
     setIsLoading(true);
     try {
       if (!clubEditingId) {
-        const code_4 = await generateUniqueClubCode4();
+        const code_4 =
+          clubCode.trim().toUpperCase() || (await generateUniqueClubCode());
         const { data, error } = await supabase
           .from("clubs")
           .insert({ name, code_4 })
@@ -543,6 +564,7 @@ export default function AdminScreen() {
           );
         }
         const payload: any = { name };
+        if (clubCode.trim()) payload.code_4 = clubCode.trim().toUpperCase();
         if (logoPath) payload.logo_path = logoPath;
         const { error } = await supabase
           .from("clubs")
@@ -596,6 +618,7 @@ export default function AdminScreen() {
     setUserEditingId(u.id);
     setUserFirstName(u.first_name || "");
     setUserLastName(u.last_name || "");
+    setUserEmail(u.email || "");
     setUserDob(u.dob || "");
     setUserSex(u.sex || "");
     setUserModalVisible(true);
@@ -923,6 +946,7 @@ export default function AdminScreen() {
         .update({
           first_name: fn,
           last_name: ln,
+          email: userEmail.trim().toLowerCase() || null,
           dob: userDob.trim() || null,
           sex: userSex.trim() || null,
         })
@@ -1075,6 +1099,18 @@ export default function AdminScreen() {
                 <View style={styles.card}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardTitle}>{item.name}</Text>
+                    <Text style={styles.cardSub}>
+                      Code:{" "}
+                      <Text
+                        style={{
+                          fontWeight: "700",
+                          color: "#ff7e21",
+                          letterSpacing: 2,
+                        }}
+                      >
+                        {String(item.code_4 || "").toUpperCase()}
+                      </Text>
+                    </Text>
                     <Text style={styles.cardSub}>
                       Logo: {item.logo_path || "-"}
                     </Text>
@@ -1314,12 +1350,36 @@ export default function AdminScreen() {
                       <Text style={styles.cardSub}>
                         Club: {clubNameById[item.club_id] || item.club_id}
                       </Text>
+                      <Text style={styles.cardSub}>
+                        {item.email || (
+                          <Text style={{ color: colors.danger }}>
+                            No email — cannot log in
+                          </Text>
+                        )}
+                      </Text>
                       <Text style={styles.cardSub}>DOB: {item.dob || "-"}</Text>
                       <Text style={styles.cardSub}>Sex: {item.sex || "-"}</Text>
                     </View>
 
                     {!selectionMode ? (
                       <>
+                        <TouchableOpacity
+                          style={styles.iconButton}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/athlete-dashboard",
+                              params: { userId: item.id, clubId: item.club_id },
+                            } as any)
+                          }
+                          activeOpacity={0.8}
+                          disabled={isLoading}
+                        >
+                          <Ionicons
+                            name="analytics-outline"
+                            size={20}
+                            color="#ff7e21"
+                          />
+                        </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.iconButton}
                           onPress={() => openEditUser(item)}
@@ -1411,6 +1471,22 @@ export default function AdminScreen() {
                     value={clubName}
                     onChangeText={setClubName}
                   />
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder={
+                      clubEditingId
+                        ? "Club code (leave blank to keep current)"
+                        : "Club code (leave blank to auto-generate)"
+                    }
+                    placeholderTextColor={colors.placeholder}
+                    value={clubCode}
+                    onChangeText={(t) =>
+                      setClubCode(t.toUpperCase().replace(/[^A-Z0-9]/g, ""))
+                    }
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={6}
+                  />
 
                   <TouchableOpacity
                     style={styles.secondaryButton}
@@ -1483,6 +1559,16 @@ export default function AdminScreen() {
                     placeholderTextColor={colors.placeholder}
                     value={userLastName}
                     onChangeText={setUserLastName}
+                  />
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Email (for athlete login)"
+                    placeholderTextColor={colors.placeholder}
+                    value={userEmail}
+                    onChangeText={setUserEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
                   />
                   <TextInput
                     style={styles.modalInput}

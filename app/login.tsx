@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { setClubSession } from "../lib/session";
+import { setAthleteSession, setClubSession } from "../lib/session";
 import { supabase } from "../lib/supabase";
 
 export default function LoginScreen() {
@@ -124,10 +124,26 @@ export default function LoginScreen() {
       }
 
       const ok = await fetchAndSetClubSessionForUser();
-      if (!ok) {
+      if (ok) {
+        router.replace("/(tabs)/select-user" as any);
+        return;
+      }
+
+      // Check if athlete (club_users with matching email)
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      const { data: athleteRow, error: athleteError } = await supabase
+        .from("club_users")
+        .select("id,club_id,first_name,last_name")
+        .eq("email", authUser?.email ?? "")
+        .maybeSingle();
+
+      if (athleteError) {
+        console.error("[athlete lookup]", athleteError);
         Alert.alert(
           "Not allowed",
-          "This account is not assigned to a club or admin.",
+          `Athlete lookup failed: ${athleteError.message}\n\nEmail used: ${authUser?.email ?? "(none)"}`,
         );
         await supabase.auth.signOut();
         setStage("phone");
@@ -135,7 +151,31 @@ export default function LoginScreen() {
         return;
       }
 
-      router.replace("/(tabs)/select-user" as any);
+      if (athleteRow?.id) {
+        const { data: club } = await supabase
+          .from("clubs")
+          .select("id,name")
+          .eq("id", athleteRow.club_id)
+          .maybeSingle();
+        await setAthleteSession({
+          type: "athlete",
+          clubId: athleteRow.club_id,
+          clubName: club?.name ?? "",
+          userId: athleteRow.id,
+          userName: `${athleteRow.first_name} ${athleteRow.last_name}`.trim(),
+          loginTime: new Date().toISOString(),
+        });
+        router.replace("/athlete-dashboard" as any);
+        return;
+      }
+
+      Alert.alert(
+        "Not allowed",
+        "This account is not assigned to a club or admin.",
+      );
+      await supabase.auth.signOut();
+      setStage("phone");
+      setOtp("");
     } catch (e: any) {
       console.error(e);
       Alert.alert("Error", e?.message || "Could not verify code");
@@ -162,7 +202,9 @@ export default function LoginScreen() {
                 style={styles.logo}
               />
               <Text style={styles.title}>Future Pro Athletes</Text>
-              <Text style={styles.subtitle}>Sign in with your email</Text>
+              <Text style={styles.subtitle}>
+                Athletes, coaches and admins — sign in with your email
+              </Text>
             </View>
 
             <View style={styles.form}>

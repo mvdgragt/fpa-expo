@@ -11,6 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { getClubSession } from "../../lib/session";
+import { supabase } from "../../lib/supabase";
 
 type TestResult = {
   userId: string;
@@ -51,51 +53,107 @@ export default function BenchmarkScreen() {
     { id: string; name: string }[]
   >([]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadBenchmarks();
-    }, []),
-  );
-
   const loadBenchmarks = useCallback(async () => {
     try {
       setIsLoading(true);
+
+      // 1. Load local cache for immediate display while fetching remote
       const savedResults = await AsyncStorage.getItem("testResults");
-      if (!savedResults) {
+      const localResults: TestResult[] = savedResults
+        ? JSON.parse(savedResults)
+        : [];
+
+      // 2. Fetch from Supabase (source of truth)
+      let remoteResults: TestResult[] = [];
+      try {
+        const session = await getClubSession();
+        if (session?.clubId) {
+          const { data, error } = await supabase
+            .from("test_results")
+            .select(
+              "user_id, station_id, station_name, station_short_name, time_seconds, tested_at, foot, club_users:club_users(first_name, last_name, image_url)",
+            )
+            .eq("club_id", session.clubId)
+            .order("tested_at", { ascending: false })
+            .limit(2000);
+
+          if (!error && data) {
+            remoteResults = (data as any[]).map((row) => ({
+              userId: String(row.user_id || ""),
+              userName:
+                `${
+                  row.club_users?.first_name || ""
+                } ${row.club_users?.last_name || ""}`.trim() || row.user_id,
+              userImage: row.club_users?.image_url || "",
+              stationId: String(row.station_id || ""),
+              stationName: String(row.station_name || ""),
+              stationShortName: String(row.station_short_name || ""),
+              time: Number(row.time_seconds).toFixed(2),
+              timestamp: String(row.tested_at || ""),
+              foot:
+                row.foot === "left" || row.foot === "right"
+                  ? row.foot
+                  : undefined,
+            }));
+          }
+        }
+      } catch {
+        // Network unavailable — fall back to local cache only
+      }
+
+      // 3. Merge: remote takes precedence; local fills any unsynced gaps
+      const seen = new Set<string>();
+      const merged: TestResult[] = [];
+      for (const r of remoteResults) {
+        const key = `${r.userId}:${r.stationId}:${r.timestamp}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(r);
+        }
+      }
+      for (const r of localResults) {
+        const key = `${r.userId}:${r.stationId}:${r.timestamp}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(r);
+        }
+      }
+
+      // 4. Update local cache with merged data
+      if (remoteResults.length > 0) {
+        await AsyncStorage.setItem("testResults", JSON.stringify(merged));
+      }
+
+      if (merged.length === 0) {
         setBenchmarks([]);
         setFilteredBenchmarks([]);
         return;
       }
 
-      const results: TestResult[] = JSON.parse(savedResults);
-
-      // Extract unique stations and users for filters
+      // 5. Build station/user filter lists
       const stationsSet = new Set<string>();
       const usersMap = new Map<string, string>();
-
-      results.forEach((result) => {
+      merged.forEach((result) => {
         stationsSet.add(result.stationId);
         usersMap.set(result.userId, result.userName);
       });
 
       setAvailableStations(
         Array.from(stationsSet).map((id) => {
-          const result = results.find((r) => r.stationId === id);
+          const result = merged.find((r) => r.stationId === id);
           return {
             id,
             name: result?.stationShortName || result?.stationName || id,
           };
         }),
       );
-
       setAvailableUsers(
         Array.from(usersMap.entries()).map(([id, name]) => ({ id, name })),
       );
 
-      // Group results by station
+      // 6. Group by station and sort fastest first
       const stationMap = new Map<string, StationBenchmark>();
-
-      results.forEach((result) => {
+      merged.forEach((result) => {
         if (!stationMap.has(result.stationId)) {
           stationMap.set(result.stationId, {
             stationId: result.stationId,
@@ -104,7 +162,6 @@ export default function BenchmarkScreen() {
             results: [],
           });
         }
-
         stationMap.get(result.stationId)?.results.push({
           userName: result.userName,
           userId: result.userId,
@@ -113,7 +170,6 @@ export default function BenchmarkScreen() {
         });
       });
 
-      // Sort results within each station by time (fastest first)
       stationMap.forEach((station) => {
         station.results.sort((a, b) => parseFloat(a.time) - parseFloat(b.time));
       });
@@ -127,6 +183,12 @@ export default function BenchmarkScreen() {
       setIsLoading(false);
     }
   }, [selectedStation, selectedUser]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadBenchmarks();
+    }, [loadBenchmarks]),
+  );
 
   const applyFilters = (
     data: StationBenchmark[],

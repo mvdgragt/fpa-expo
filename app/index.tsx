@@ -1,7 +1,11 @@
 import { router } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { getClubSession, setClubSession } from "../lib/session";
+import {
+  getClubSession,
+  setAthleteSession,
+  setClubSession,
+} from "../lib/session";
 import { supabase } from "../lib/supabase";
 
 export default function Index() {
@@ -45,32 +49,54 @@ export default function Index() {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (!staffRow?.club_id) {
-        router.replace("/login");
+      if (staffRow?.club_id) {
+        const { data: club } = await supabase
+          .from("clubs")
+          .select("id,name,code_4,logo_path")
+          .eq("id", staffRow.club_id)
+          .single();
+
+        if (club) {
+          await setClubSession({
+            type: "club",
+            clubCode: String(club.code_4),
+            clubId: club.id,
+            clubName: club.name,
+            clubLogoPath: club.logo_path || undefined,
+            loginTime: new Date().toISOString(),
+          });
+          router.replace("/(tabs)/select-user" as any);
+          return;
+        }
+      }
+
+      // Check if this is an athlete (club_users with matching email)
+      const { data: athleteRow } = await supabase
+        .from("club_users")
+        .select("id,club_id,first_name,last_name")
+        .eq("email", user.email ?? "")
+        .maybeSingle();
+
+      if (athleteRow?.id) {
+        const { data: club } = await supabase
+          .from("clubs")
+          .select("id,name")
+          .eq("id", athleteRow.club_id)
+          .maybeSingle();
+
+        await setAthleteSession({
+          type: "athlete",
+          clubId: athleteRow.club_id,
+          clubName: club?.name ?? "",
+          userId: athleteRow.id,
+          userName: `${athleteRow.first_name} ${athleteRow.last_name}`.trim(),
+          loginTime: new Date().toISOString(),
+        });
+        router.replace("/athlete-dashboard" as any);
         return;
       }
 
-      const { data: club } = await supabase
-        .from("clubs")
-        .select("id,name,code_4,logo_path")
-        .eq("id", staffRow.club_id)
-        .single();
-
-      if (!club) {
-        router.replace("/login");
-        return;
-      }
-
-      await setClubSession({
-        type: "club",
-        clubCode: String(club.code_4),
-        clubId: club.id,
-        clubName: club.name,
-        clubLogoPath: club.logo_path || undefined,
-        loginTime: new Date().toISOString(),
-      });
-
-      router.replace("/(tabs)/select-user" as any);
+      router.replace("/login");
     } catch (error) {
       console.error("Error checking login status:", error);
       router.replace("/login");

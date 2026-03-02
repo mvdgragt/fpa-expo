@@ -30,6 +30,8 @@ export default function RootLayout() {
             <Stack.Screen name="select-user" />
             <Stack.Screen name="add-user" />
             <Stack.Screen name="user-profile" />
+            <Stack.Screen name="athlete-login" />
+            <Stack.Screen name="athlete-dashboard" />
           </Stack>
         </SafeAreaProvider>
       </SelectedUserProvider>

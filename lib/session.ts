@@ -39,3 +39,32 @@ export const setClubSession = async (session: ClubSession) => {
 export const clearClubSession = async () => {
   await AsyncStorage.removeItem(CLUB_SESSION_KEY);
 };
+
+export type AthleteSession = {
+  type: "athlete";
+  clubId: string;
+  clubName: string;
+  userId: string;
+  userName: string;
+  loginTime: string;
+};
+
+const ATHLETE_SESSION_KEY = "athleteSession";
+
+export const getAthleteSession = async (): Promise<AthleteSession | null> => {
+  const raw = await AsyncStorage.getItem(ATHLETE_SESSION_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AthleteSession;
+  } catch {
+    return null;
+  }
+};
+
+export const setAthleteSession = async (session: AthleteSession) => {
+  await AsyncStorage.setItem(ATHLETE_SESSION_KEY, JSON.stringify(session));
+};
+
+export const clearAthleteSession = async () => {
+  await AsyncStorage.removeItem(ATHLETE_SESSION_KEY);
+};

@@ -95,6 +95,20 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
+        name="coach"
+        options={{
+          title: "Coach",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? "analytics" : "analytics-outline"}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="logout"
         options={{
           title: "Logout",
