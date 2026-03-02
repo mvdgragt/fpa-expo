@@ -121,6 +121,8 @@ export default function TestingScreen() {
             station_short_name: String(result.stationShortName || ""),
             time_seconds: Number(result.time),
             tested_at: result.timestamp,
+            foot:
+              isFiveOhFiveTest && result.foot ? String(result.foot) : undefined,
           });
           if (error) {
             if (__DEV__)

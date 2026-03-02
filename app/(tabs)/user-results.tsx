@@ -48,6 +48,7 @@ export default function UserResultsScreen() {
   const defaultAvatarUrl = "https://www.gravatar.com/avatar/?d=mp&f=y";
   const isCompactModal = Dimensions.get("window").height < 780;
   const [fiveOhFiveDetailsOpen, setFiveOhFiveDetailsOpen] = useState(false);
+  const [isBackfillSyncing, setIsBackfillSyncing] = useState(false);
   const [fiveOhFiveSelected, setFiveOhFiveSelected] = useState<{
     dayKey: string;
     latestTimestamp: string;
@@ -488,6 +489,91 @@ export default function UserResultsScreen() {
     router.push("/");
   };
 
+  const syncAllLocalResultsToSupabase = useCallback(async () => {
+    if (isBackfillSyncing) return;
+
+    try {
+      setIsBackfillSyncing(true);
+
+      const session = await getClubSession();
+      if (!session?.clubId) {
+        Alert.alert("Not logged in", "Missing club session.");
+        return;
+      }
+
+      const savedResults = await AsyncStorage.getItem("testResults");
+      const allResults: TestResult[] = savedResults
+        ? JSON.parse(savedResults)
+        : [];
+
+      if (!Array.isArray(allResults) || allResults.length === 0) {
+        Alert.alert("Nothing to sync", "No local results found.");
+        return;
+      }
+
+      const payload = allResults
+        .map((r) => {
+          const testedAt = String((r as any).timestamp || "");
+          if (!testedAt) return null;
+
+          const timeSeconds = Number((r as any).time);
+          if (!Number.isFinite(timeSeconds)) return null;
+
+          const stationId = String((r as any).stationId || "");
+          const is505 = stationId === "5-0-5-test";
+          const foot = is505 ? (r.foot ? String(r.foot) : null) : null;
+
+          return {
+            club_id: session.clubId,
+            user_id: String((r as any).userId || ""),
+            station_id: stationId,
+            station_name: String((r as any).stationName || ""),
+            station_short_name: String((r as any).stationShortName || ""),
+            time_seconds: timeSeconds,
+            tested_at: testedAt,
+            foot,
+          };
+        })
+        .filter((x): x is NonNullable<typeof x> => !!x && !!x.user_id);
+
+      if (payload.length === 0) {
+        Alert.alert("Nothing to sync", "No valid local results found.");
+        return;
+      }
+
+      const chunkSize = 200;
+      let inserted = 0;
+
+      for (let i = 0; i < payload.length; i += chunkSize) {
+        const chunk = payload.slice(i, i + chunkSize);
+        const { error } = await supabase.from("test_results").upsert(chunk, {
+          onConflict: "club_id,user_id,station_id,tested_at",
+          ignoreDuplicates: true,
+        });
+
+        if (error) {
+          throw error;
+        }
+        inserted += chunk.length;
+      }
+
+      Alert.alert(
+        "Sync complete",
+        `Uploaded ${inserted} local result${inserted === 1 ? "" : "s"} to Supabase.`,
+      );
+    } catch (e) {
+      const msg =
+        e instanceof Error
+          ? e.message
+          : typeof e === "string"
+            ? e
+            : "Sync failed.";
+      Alert.alert("Sync failed", msg);
+    } finally {
+      setIsBackfillSyncing(false);
+    }
+  }, [isBackfillSyncing]);
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>{user?.name || "Your Results"}</Text>
@@ -630,6 +716,32 @@ export default function UserResultsScreen() {
             >
               <Ionicons name="trophy" size={24} color="#fff" />
               <Text style={styles.actionButtonText}>View Leaderboard</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, styles.syncButton]}
+              onPress={() => {
+                Alert.alert(
+                  "Sync local results",
+                  "This will upload all locally saved test results to Supabase. Duplicates will be ignored.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: isBackfillSyncing ? "Syncing…" : "Sync now",
+                      onPress: () => syncAllLocalResultsToSupabase(),
+                    },
+                  ],
+                );
+              }}
+              activeOpacity={0.8}
+              disabled={isBackfillSyncing}
+            >
+              <Ionicons name="cloud-upload" size={24} color="#fff" />
+              <Text style={styles.actionButtonText}>
+                {isBackfillSyncing
+                  ? "Syncing…"
+                  : "Sync All Local Results to Supabase"}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1251,6 +1363,9 @@ const styles = StyleSheet.create({
   },
   leaderboardButton: {
     backgroundColor: "#47464c",
+  },
+  syncButton: {
+    backgroundColor: "#2563eb",
   },
   newTestButton: {
     backgroundColor: "#4CAF50",
